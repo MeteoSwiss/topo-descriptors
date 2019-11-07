@@ -1,0 +1,22 @@
+[[source]]
+trusted-host = "nexus.meteoswiss.ch"
+verify-ssl = false
+index = "https://nexus.meteoswiss.ch/repository/python-all/pypi"
+url = "https://nexus.meteoswiss.ch/repository/python-all/simple"
+
+[requires]
+python_version = "3.6"
+
+[packages]
+pandas = ">=0.23.4"
+numpy = "*"
+netcdf4 = "*"
+xarray = "*"
+pyproj = "*"
+scipy = "*"
+
+[dev-packages]
+yapf = "*"
+ipython = "*"
+jupyter = "*"
+matplotlib = "*"

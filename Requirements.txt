@@ -1,0 +1,6 @@
+netCDF4
+numpy==1.16.4
+pyproj==2.2.1
+xarray
+scipy
+matplotlib
