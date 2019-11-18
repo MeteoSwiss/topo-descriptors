@@ -1,4 +1,5 @@
 import numpy as np
+import numpy.ma as ma
 from scipy import ndimage, signal
 import xarray as xr
 import Topo_descriptors.topo_helpers as hlp
@@ -39,6 +40,7 @@ def valley_netcdf(path_dem, dist_list, flat_list):
     valley_index = np.empty((n_dist,n_y, n_x), dtype= np.float32)
     valley_angle = np.empty((n_dist,n_y, n_x), dtype= np.float32)
     n_kernels = len(flat_list) + 1
+    dem_in = np.broadcast_to(dem_in,(n_kernels,n_y,n_x))
     angle_list = np.arange(0,180,dtype=np.float32)
     
     for idx,size in enumerate(dist_pxl):
@@ -62,16 +64,10 @@ def valley_netcdf(path_dem, dist_list, flat_list):
             
             kernel_rotated = ndimage.rotate(kernel_all, angle , axes=(1,2), reshape=True, order=2, mode='constant', cval=-999)
             dem_convolved = np.empty((n_kernels,n_y, n_x), dtype=np.float32)
-            
-            for id3,filters in enumerate(kernel_rotated):
-                
-                filter_mask = filters == -999
-                filter_good = np.logical_not(filter_mask)
-                filters = (filters - np.mean(filters[filter_good]))/np.std(filters[filter_good])
-                filters[filter_mask] = 0
-                
-                dem_convolved[id3,:,:] = signal.convolve(dem_in,filters, mode = 'same')
-             
+            kernel_rotated = ma.masked_array(kernel_rotated, mask=kernel_rotated == -999)
+            kernel_rotated = (kernel_rotated - np.mean(kernel_rotated,axis=(1,2),keepdims=True))/np.std(kernel_rotated,axis=(1,2),keepdims=True)
+            kernel_rotated = ma.MaskedArray.filled(kernel_rotated,0)
+            dem_convolved = signal.convolve(dem_in,kernel_rotated, mode = 'same', method='auto')
             dem_convolved = np.max(dem_convolved, axis=0)
             bool_greater = dem_convolved > current_max
             current_max[bool_greater] = dem_convolved[bool_greater]
