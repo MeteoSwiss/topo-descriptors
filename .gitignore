@@ -106,14 +106,6 @@ ENV/
 /deploy/*.env
 /tmp/*
 
-# R stuff
-.Rhistory
 
 # personal stuff
-test_gitterDB.ipynb
-sounding_example.py
-Data4web4_POC/aggregation_old.py
-Data4web4_POC/snowlimit_old.py
-Data4web4_POC/trial_data.py
-main_precip_looped.py
-main_precip_refactored.py
+
