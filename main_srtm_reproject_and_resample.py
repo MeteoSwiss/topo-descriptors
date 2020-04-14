@@ -8,6 +8,7 @@ grid points within Switzerland.
 '''
 
 import numpy as np
+import matplotlib.pyplot as plt
 import xarray as xr
 
 from Topo_descriptors.preprocessing import generate_grid, reproject
@@ -24,10 +25,10 @@ src_grid = np.meshgrid(srtm.lon.values, srtm.lat.values)
 srtm = srtm.SRTM90.values.astype(np.int16)
 
 # which we need to reproject on the CCS4 domain with Swiss coordinates, 50m
-# resolution, and 30 km buffer to allow the computation of large scale topographical
+# resolution, and 15 km buffer to allow the computation of large scale topographical
 # descriptors
 resolution = 50
-buffer = 30e3
+buffer = 15e3
 domain = 'CCS4'
 dst_crs = 'EPSG:21781' # LV03
 dst_grid = generate_grid(resolution, domain, dst_crs, buffer)
@@ -39,7 +40,7 @@ destination, ref_coords = reproject(
     dst_grid=dst_grid,
     src_crs=src_crs,
     dst_crs=dst_crs,
-    resampling='nearest',
+    resampling='linear',
     nchunks=10,
     )
 
@@ -59,12 +60,16 @@ print(srtm_ccs4)
 # the second source is the Swisstopo DHM25 on a LV03 grid
 swisstopo = xr.open_dataset(fn_swisstopo)
 swisstopo = swisstopo.reindex(chy=swisstopo.chy[::-1])
+
+# which we first need to upscale to 50 m
+swisstopo = swisstopo.coarsen(chx=2, chy=2, boundary='trim').mean()
+swisstopo = swisstopo.where(swisstopo.DHM25 > 0, -9999)
+print(swisstopo)
+
+# and then to align with the CCS4 domain
 src_crs = 'EPSG:21781'
 src_grid = np.meshgrid(swisstopo.chx.values, swisstopo.chy.values)
 swisstopo = swisstopo.DHM25.values.astype(np.int16)
-
-# which we need to reproject on new Swiss domain (LV03) aligned with the
-# CCS4 domain (50m resolution, no buffer)
 resolution = 50
 buffer = 0
 domain = 'Switzerland'
@@ -78,7 +83,7 @@ destination, ref_coords = reproject(
     dst_grid=dst_grid,
     src_crs=src_crs,
     dst_crs=dst_crs,
-    resampling='linear', # using linear interpolation this time!
+    resampling='linear',
     nchunks=10,
     )
 destination[destination < 0] = -9999
@@ -87,8 +92,8 @@ destination[destination < 0] = -9999
 swisstopo = xr.Dataset(
         {'DHM25' : (['chy', 'chx'], destination.astype(np.int16))},
         coords={
-            'chx' : ('chx', dst_grid[0][0, :].astype(np.int16)),
-            'chy' : ('chy', dst_grid[1][:, 0].astype(np.int16)),
+            'chx' : ('chx', dst_grid[0][0, :].astype(np.float32)),
+            'chy' : ('chy', dst_grid[1][:, 0].astype(np.float32)),
             'lon' : (['chy', 'chx'], ref_coords[0].astype(np.float32)),
             'lat' : (['chy', 'chx'], ref_coords[1].astype(np.float32))
             }
