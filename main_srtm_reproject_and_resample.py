@@ -1,7 +1,7 @@
 '''
 This scripts takes the SRTM mosaic and reprojects it on a regular grid, namely
 the radar/INCA CCS4 grid, with Swiss LV03 coordinates, and 50m resolution.
-The domain is buffered by 30 km to allow the computation of large scale
+The domain is buffered by 15 km to allow the computation of large scale
 topographical descriptors.
 Additionally, it combines it with higher quality DEM data from Swisstopo for
 grid points within Switzerland.
