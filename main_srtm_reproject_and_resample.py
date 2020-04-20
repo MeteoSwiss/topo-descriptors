@@ -1,7 +1,7 @@
 '''
 This scripts takes the SRTM mosaic and reprojects it on a regular grid, namely
 the radar/INCA CCS4 grid, with Swiss LV03 coordinates, and 50m resolution.
-The domain is buffered by 15 km to allow the computation of large scale
+The domain is buffered by 30 km to allow the computation of large scale
 topographical descriptors.
 Additionally, it combines it with higher quality DEM data from Swisstopo for
 grid points within Switzerland.
@@ -25,10 +25,10 @@ src_grid = np.meshgrid(srtm.lon.values, srtm.lat.values)
 srtm = srtm.SRTM90.values.astype(np.int16)
 
 # which we need to reproject on the CCS4 domain with Swiss coordinates, 50m
-# resolution, and 15 km buffer to allow the computation of large scale topographical
+# resolution, and 30 km buffer to allow the computation of large scale topographical
 # descriptors
 resolution = 50
-buffer = 15e3
+buffer = 30e3
 domain = 'CCS4'
 dst_crs = 'EPSG:21781' # LV03
 dst_grid = generate_grid(resolution, domain, dst_crs, buffer)
@@ -43,6 +43,7 @@ destination, ref_coords = reproject(
     resampling='linear',
     nchunks=10,
     )
+destination[destination < -100] = -9999
 
 # as xarray
 srtm_ccs4 = xr.Dataset(
@@ -66,15 +67,20 @@ swisstopo = swisstopo.coarsen(chx=2, chy=2, boundary='trim').mean()
 swisstopo = swisstopo.where(swisstopo.DHM25 > 0, -9999)
 print(swisstopo)
 
-# and then to align with the CCS4 domain
+# and then to align with the CCS4 domain by shifting it by 25 m
+# note that the extent of a domain is defined by the coordinates
+# of pixel corners, and not pixel centres
 src_crs = 'EPSG:21781'
 src_grid = np.meshgrid(swisstopo.chx.values, swisstopo.chy.values)
-swisstopo = swisstopo.DHM25.values.astype(np.int16)
-resolution = 50
-buffer = 0
-domain = 'Switzerland'
+dst_corners = {
+    'NW': (src_grid[0].min(), src_grid[1].max()),
+    'NE': (src_grid[0].max(), src_grid[1].max()),
+    'SW': (src_grid[0].min(), src_grid[1].min()),
+    'SE': (src_grid[0].max(), src_grid[1].min())
+    }
 dst_crs = 'EPSG:21781' # LV03
-dst_grid = generate_grid(resolution, domain, dst_crs, buffer)
+dst_grid = generate_grid(50, dst_corners, dst_crs, 0)
+swisstopo = swisstopo.DHM25.values.astype(np.int16)
 
 # reproject and resample Swisstopo on new destination grid
 destination, ref_coords = reproject(
