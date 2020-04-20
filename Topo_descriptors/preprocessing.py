@@ -22,21 +22,29 @@ def generate_grid(resolution, domain, crs, buffer=0):
     ----------
     resolution: int
         Pixel size of the new grid, in the units defined by the *crs* argument.
-    domain: str
-        Name of the grid domain. Currently the following domaines are
-        implemented:
-        +-------------+-------------------------------------------------------+
+    domain: str or dict
+        Either the name of an available grid domain (see below) or a dictionary
+        providing the coordinates of the four corners of a domain, that is,
+        ```
+        domain = {
+            'NW': (xmin, ymax),
+            'NE': (xmax, ymax),
+            'SW': (xmin, ymin),
+            'SE': (xmax, ymin)
+        }
+        ```
+        with same projection of the destination grid.
+
+        Currently the following domaines are implemented:
+        +-------------+------------+------------------------------------------+
         | Name        | CRS        | Corners (WN, EN, WS, ES)                 |
-        +=============+=======================================================+
+        +=============+============+==========================================+
         | CCS4        | EPSG:21781 | ((255000, 480000), (965000, 480000),     |
         |             |            |  (255000, -160000), (965000, -160000))   |
-        +-------------+-------------------------------------------------------+
+        +-------------+------------+------------------------------------------+
         | COSMO       | EPSG:4326  |  (0.16, 49.52), (16.75, 49.73),          |
         |             |            |  (1.33, 42.67), (15.94, 42.85))          |
-        +-------------+-------------------------------------------------------+
-        | Switzerland | EPSG:21781 | ((480000, 302000), (865000, 302000),     |
-        |             |            |  (480000, 74000), (865000, -74000))      |
-        +-------------+-------------------------------------------------------+
+        +-------------+------------+------------------------------------------+
     crs: str
         pyproj-compatible CRS name defining the coordinate system of the new grid.
     buffer: int, optional
@@ -93,21 +101,10 @@ def generate_grid(resolution, domain, crs, buffer=0):
             }
         domain_proj = pyproj.Proj(init='EPSG:4326') # WSG84
 
-    elif domain == 'Switzerland':
+    elif isinstance(domain, dict):
 
-        domain_corners = { # chx chy
-            # original bounds from Swisstopo DHM25 extent:
-            # 'NW' : [479975., 302000.],
-            # 'NE' : [865000., 302000.],
-            # 'SW' : [479975., 73975.],
-            # 'SE' : [865000., 73975.]
-            # shifted by 25 meters:
-            'NW' : [480000., 302000.],
-            'NE' : [865000., 302000.],
-            'SW' : [480000., 74000.],
-            'SE' : [865000., 74000.]
-            }
-        domain_proj = pyproj.Proj(init='EPSG:21781') # LV03
+        domain_corners = domain
+        domain_proj = destination_proj
 
     else:
         raise ValueError(f'unknown domain {domain}')
