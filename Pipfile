@@ -13,8 +13,7 @@ numpy = "*"
 netcdf4 = "*"
 xarray = "*"
 pyproj = "*"
-scipy = "*"
-scikit-image = "*"
+scipy = ">=1.4.1"
 
 [dev-packages]
 yapf = "*"
