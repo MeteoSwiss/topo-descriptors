@@ -1,6 +1,7 @@
 import numpy as np
 import numpy.ma as ma
 from scipy import ndimage, signal
+from multiprocessing import Pool, cpu_count
 import Topo_descriptors.topo_helpers as hlp
 import logging
 logger = logging.getLogger(__name__)
@@ -169,36 +170,26 @@ def compute_valley_ridge(dem_da,
     scales_pxl, _ = hlp.scale_to_pixel(scales, dem_da)
     sigmas = hlp.get_sigmas(smth_factors, scales_pxl)
 
+    pool = Pool(processes=min(len(scales_pxl), cpu_count()))
     for idx, scale_pxl in enumerate(scales_pxl):
         logger.info(f'Computing scale {scales[idx]} meters with smoothing factor' 
                     f' {smth_factors[idx]} ...')
         names = _valley_ridge_names(scales[idx], mode, smth_factors[idx])
-        arrays = valley_ridge(dem = dem_da.values, 
-                              size = scale_pxl,
-                              mode = mode,
-                              flat_list = flat_list, 
-                              sigma = sigmas[idx])
-        
-        for array, name in zip(arrays, names):
-            array[ind_nans] = np.nan
-            hlp.to_netcdf(array, dem_da.coords, name, crop)
-            
-        del arrays
+        pool.apply_async(_valley_ridge_wrap, args = (dem_da, scale_pxl, mode, flat_list, 
+                                            sigmas[idx], names, ind_nans, crop))
+       
+    pool.close()
+    pool.join()
+   
 
-
-#def _valley_ridge_wrap(dem_da, size, mode, flat_list, sigma, names, ind_nans, crop):
-#    arrays = valley_ridge(dem_da.values, size, mode, flat_list, sigma)
-#    for array, name in zip(arrays, names):
-#        array[ind_nans] = np.nan
-#        hlp.to_netcdf(array, dem_da.coords, name, crop)
-#
-#from multiprocessing import Pool    
-#pool = Pool(-1)
-#pool.apply_async(_valley_ridge_wrap, args = (dem_da, scale_pxl, mode, flat_list, 
-#                                            sigmas[idx], names, ind_nans, crop))
-#
-#pool.close()
-#pool.join()
+def _valley_ridge_wrap(dem_da, size, mode, flat_list, sigma, names, ind_nans, crop):
+    """Wrapper to valley_ridge and hlp.to_netcdf functions to ease the parallelization
+    of the different scales"""
+    
+    arrays = valley_ridge(dem_da.values, size, mode, flat_list, sigma)
+    for array, name in zip(arrays, names):
+        array[ind_nans] = np.nan
+        hlp.to_netcdf(array, dem_da.coords, name, crop)
 
 
 @hlp.timer
