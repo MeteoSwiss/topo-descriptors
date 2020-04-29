@@ -45,13 +45,6 @@ tp.compute_gradient(dem_da,
                     ind_nans=ind_nans, 
                     crop=inca_domain)
 
-# Gradients with rectangular kernels (ratio=1/4)
-tp.compute_gradient(dem_da, 
-                    topo_scales, 
-                    sig_ratios=0.25, 
-                    ind_nans=ind_nans, 
-                    crop=inca_domain)
-
 # Valley Index with prior smoothing
 tp.compute_valley_ridge(dem_da, 
                         topo_scales[3:],
