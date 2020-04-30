@@ -218,8 +218,8 @@ def valley_ridge(dem, size, mode, flat_list=[0, 0.15, 0.3], sigma=None):
     list of two arrays : 
         First element is the norm and second the direction of the valley or ridge 
         index. The direction in degrees is defined from 0° to 179°, increasing 
-        counter-clockwise. W-E oriented valleys have a direction close to 0° or 
-        180°, while S-N oriented valleys have a direction close to 90°.
+        clockwise. W-E oriented valleys have a direction close to 0° or 180°, 
+        while S-N oriented valleys have a direction close to 90°.
         
     See also
     --------
