@@ -1,1 +1,2 @@
 include LICENSE README.md HISTORY.rst AUTHORS.rst
+include dem_30m.png tpi_500M.png
