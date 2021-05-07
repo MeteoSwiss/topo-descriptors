@@ -82,7 +82,7 @@ def scale_to_pixel(scales, dem_da):
     dict with two 1-D or 2-D arrays :
         Resolution in meters of each DEM grid points in the x and y directions.
     """
-    _check_dem(dem_da)
+    check_dem(dem_da)
     x_coords, y_coords = dem_da['x'].values, dem_da['y'].values
     epsg_code = f"epsg:{int(dem_da.attrs['crs'].split('epsg:')[1])}"
     if epsg_code == "epsg:4326":
