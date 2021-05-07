@@ -1,0 +1,7 @@
+pandas
+numpy
+netcdf4
+xarray
+utm
+scipy
+yaconfigobject
