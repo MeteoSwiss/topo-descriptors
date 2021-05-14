@@ -35,6 +35,7 @@ package_data = {}
 
 setup(
     name="topo-descriptors",
+    packages=packages,
     use_scm_version=True,
     author="Mathieu Schaer",
     author_email="mathieu.schaer@meteoswiss.ch",
