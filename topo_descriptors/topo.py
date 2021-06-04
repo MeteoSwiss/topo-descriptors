@@ -214,7 +214,7 @@ def std(dem, size, sigma=None):
     if sigma:
         dem = ndimage.gaussian_filter(dem, sigma)
 
-    squared_dem = dem.astype("float32") ** 2
+    squared_dem = dem.astype("int32") ** 2
     sum_dem = signal.convolve(dem, kernel, mode="same")
     sum_squared_dem = signal.convolve(squared_dem, kernel, mode="same")
 
