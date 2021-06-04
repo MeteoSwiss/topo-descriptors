@@ -38,7 +38,7 @@ def compute_tpi(dem_da, scales, smth_factors=None, ind_nans=[], crop=None):
 
     See also
     --------
-    tpi, _tpi_kernel
+    tpi, circular_kernel
     """
 
     hlp.check_dem(dem_da)
@@ -88,7 +88,10 @@ def tpi(dem, size, sigma=None):
     scipy.signal.convolve, scipy.ndimage.gaussian_filter
     """
 
-    kernel = _tpi_kernel(size)
+    kernel = circular_kernel(size)
+    # exclude mid point from the kernel
+    kernel[int(size / 2), int(size / 2)] = 0
+
     if sigma:
         dem = ndimage.gaussian_filter(dem, sigma)
 
@@ -105,13 +108,14 @@ def _tpi_name(scale, smth_factor):
     return f"TPI_{scale}M{add}"
 
 
-def _tpi_kernel(size):
-    """Generate a circular kernel to compute TPI.
+def circular_kernel(size):
+    """Generate a circular kernel.
 
     Parameters
     ----------
     size : int
-        Size of the kernel.
+        Size of the circular kernel (its diameter). For size < 5, the kernel is
+        a square instead of a circle.
 
     Returns
     -------
@@ -126,7 +130,6 @@ def _tpi_kernel(size):
         circle = (xx - middle) ** 2 + (yy - middle) ** 2
         kernel = np.asarray(circle <= (middle ** 2), dtype=np.float32)
 
-    kernel[middle, middle] = 0
     return kernel
 
 
@@ -157,7 +160,7 @@ def compute_std(dem_da, scales, smth_factors=None, ind_nans=[], crop=None):
 
     See also
     --------
-    std, _tpi_kernel
+    std, circular_kernel
     """
 
     hlp.check_dem(dem_da)
@@ -206,7 +209,7 @@ def std(dem, size, sigma=None):
     --------
     scipy.signal.convolve, scipy.ndimage.gaussian_filter
     """
-    kernel = _tpi_kernel(size)
+    kernel = circular_kernel(size)
     kernel_sum = np.sum(kernel)
     if sigma:
         dem = ndimage.gaussian_filter(dem, sigma)
