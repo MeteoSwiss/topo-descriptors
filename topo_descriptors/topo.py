@@ -30,7 +30,7 @@ def compute_tpi(dem_da, scales, smth_factors=None, ind_nans=[], crop=None):
         Contains the (row, column) indices of the NaNs in the original DEM to be
         reassigned after computations. NaNs in the original DEM should be
         interpolated prior computations as they propagate in convolutions with
-        the fast fourrier transform method (scipy.signal.convolve).
+        the fast Fourier transform method (scipy.signal.convolve).
     crop (optional) : dict
         If specified the outputs are cropped to the given extend. Keys should be
         the coordinates labels of dem_da and values should be slices of [min,max]
@@ -152,7 +152,7 @@ def compute_std(dem_da, scales, smth_factors=None, ind_nans=[], crop=None):
         Contains the (row, column) indices of the NaNs in the original DEM to be
         reassigned after computations. NaNs in the original DEM should be
         interpolated prior computations as they propagate in convolutions with
-        the fast fourrier transform method (scipy.signal.convolve).
+        the fast Fourier transform method (scipy.signal.convolve).
     crop (optional) : dict
         If specified the outputs are cropped to the given extend. Keys should be
         the coordinates labels of dem_da and values should be slices of [min,max]
@@ -252,7 +252,7 @@ def compute_valley_ridge(
     mode : {valley, ridge}
         Whether to compute the valley or ridge index.
     flat_list (optional) : list of floats in [0,1[
-        Fractions of flat along the center ligne of the V-shape kernels. A certain
+        Fractions of flat along the center line of the V-shape kernels. A certain
         amount of flat is use to approximate the shape of glacial valleys.
         Default is [0, 0.15, 0.3].
     smth_factors (optional) : scalar or None or list with a combination of both.
@@ -264,7 +264,7 @@ def compute_valley_ridge(
         Contains the (row, column) indices of the NaNs in the original DEM to be
         reassigned after computations. NaNs in the original DEM should be
         interpolated prior computations as they propagate in convolutions with
-        the fast fourrier transform method (scipy.signal.convolve).
+        the fast Fourier transform method (scipy.signal.convolve).
     crop (optional) : dict
         If specified the outputs are cropped to the given extend. Keys should be
         the coordinates labels of dem_da and values should be slices of [min,max]
@@ -334,7 +334,7 @@ def valley_ridge(dem, size, mode, flat_list=[0, 0.15, 0.3], sigma=None):
     mode : {valley, ridge}
         Whether to compute the valley or ridge index.
     flat_list (optional) : list of floats in [0,1[
-        Fractions of flat along the center ligne of the V-shape kernels. A certain
+        Fractions of flat along the center line of the V-shape kernels. A certain
         amount of flat is use to approximate the shape of glacial valleys.
         Default is [0, 0.15, 0.3].
     sigma (optional) : scalar
@@ -406,7 +406,7 @@ def _valley_kernels(size, flat_list):
     size : int
         Size of the kernel.
     flat_list : list of floats in [0,1[
-        Fractions of flat along the center ligne of the V-shape kernels. A certain
+        Fractions of flat along the center line of the V-shape kernels. A certain
         amount of flat is use to approximate the shape of glacial valleys.
 
     Returns
@@ -442,7 +442,7 @@ def _ridge_kernels(size, flat_list):
     size : int
         Size of the kernel.
     flat_list : list of floats in [0,1[
-        Fractions of flat along the center ligne of the V-shape kernels. A certain
+        Fractions of flat along the center line of the V-shape kernels. A certain
         amount of flat is use to approximate the shape of glacial valleys.
 
     Returns
