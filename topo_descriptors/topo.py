@@ -135,7 +135,7 @@ def circular_kernel(size):
     return kernel
 
 
-def compute_std(dem_da, scales, smth_factors=None, ind_nans=[], crop=None):
+def compute_std(dem_da, scales, smth_factors=None, ind_nans=[], crop=None, outdir="."):
     """Wrapper to 'std' function to launch computations for all scales and save
     outputs as netCDF files.
 
@@ -159,6 +159,8 @@ def compute_std(dem_da, scales, smth_factors=None, ind_nans=[], crop=None):
         If specified the outputs are cropped to the given extend. Keys should be
         the coordinates labels of dem_da and values should be slices of [min,max]
         extend. Default is None.
+    outdir (optional) : string
+        The path to the output directory. Save to working directory by default.
 
     See also
     --------
@@ -184,7 +186,7 @@ def compute_std(dem_da, scales, smth_factors=None, ind_nans=[], crop=None):
         array = std(dem=dem_da.values, size=scale_pxl, sigma=sigmas[idx])
 
         array[ind_nans] = np.nan
-        hlp.to_netcdf(array, dem_da.coords, name, crop)
+        hlp.to_netcdf(array, dem_da.coords, name, crop, outdir)
         del array
 
 
