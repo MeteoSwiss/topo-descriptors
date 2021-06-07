@@ -87,7 +87,7 @@ def scale_to_pixel(scales, dem_da):
     """
     check_dem(dem_da)
     x_coords, y_coords = dem_da["x"].values, dem_da["y"].values
-    epsg_code = f"epsg:{int(dem_da.attrs['crs'].split('epsg:')[1])}"
+    epsg_code = f"epsg:{int(dem_da.attrs['crs'].lower().split('epsg:')[1])}"
     if epsg_code == "epsg:4326":
         logger.warning(
             f"Reprojecting coordinates from WGS84 to UTM to obtain units of meters"
@@ -182,6 +182,6 @@ def check_dem(dem):
     if dem.dims != ("y", "x"):
         raise ValueError("dem dimensions must be ('y', 'x')")
     if not "crs" in dem.attrs:
-        raise KeyError("missing 'crs' attribute in dem")
+        raise KeyError("missing 'crs' (case sensitive) attribute in dem")
     if not "epsg:" in dem.attrs["crs"].lower():
-        raise ValueError("missing 'epsg:' key in the 'crs' attribute")
+        raise ValueError("missing 'epsg:' (case insensitive) key in the 'crs' attribute")
