@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import numpy as np
 import numpy.ma as ma
@@ -11,7 +12,7 @@ from topo_descriptors import CFG
 logger = logging.getLogger(__name__)
 
 
-def compute_tpi(dem_da, scales, smth_factors=None, ind_nans=[], crop=None):
+def compute_tpi(dem_da, scales, smth_factors=None, ind_nans=[], crop=None, outdir="."):
     """Wrapper to 'tpi' function to launch computations for all scales and save
     outputs as netCDF files.
 
@@ -35,6 +36,8 @@ def compute_tpi(dem_da, scales, smth_factors=None, ind_nans=[], crop=None):
         If specified the outputs are cropped to the given extend. Keys should be
         the coordinates labels of dem_da and values should be slices of [min,max]
         extend. Default is None.
+    outdir (optional) : string
+        The path to the output directory. Save to working directory by default.
 
     See also
     --------
@@ -60,7 +63,7 @@ def compute_tpi(dem_da, scales, smth_factors=None, ind_nans=[], crop=None):
         array = tpi(dem=dem_da.values, size=scale_pxl, sigma=sigmas[idx])
 
         array[ind_nans] = np.nan
-        hlp.to_netcdf(array, dem_da.coords, name, crop)
+        hlp.to_netcdf(array, dem_da.coords, name, crop, outdir)
         del array
 
 
@@ -138,6 +141,7 @@ def compute_valley_ridge(
     smth_factors=None,
     ind_nans=[],
     crop=None,
+    outdir=".",
 ):
     """Wrapper to 'valley_ridge' function to launch computations for all scales
     and save outputs as netCDF files.
@@ -168,6 +172,8 @@ def compute_valley_ridge(
         If specified the outputs are cropped to the given extend. Keys should be
         the coordinates labels of dem_da and values should be slices of [min,max]
         extend. Default is None.
+    outdir (optional) : string
+        The path to the output directory. Save to working directory by default.
 
     See also
     --------
@@ -202,6 +208,7 @@ def compute_valley_ridge(
                 names,
                 ind_nans,
                 crop,
+                outdir,
             ),
         )
 
@@ -209,14 +216,16 @@ def compute_valley_ridge(
     pool.join()
 
 
-def _valley_ridge_wrap(dem_da, size, mode, flat_list, sigma, names, ind_nans, crop):
+def _valley_ridge_wrap(
+    dem_da, size, mode, flat_list, sigma, names, ind_nans, crop, outdir
+):
     """Wrapper to valley_ridge and hlp.to_netcdf functions to ease the parallelization
     of the different scales"""
 
     arrays = valley_ridge(dem_da.values, size, mode, flat_list, sigma)
     for array, name in zip(arrays, names):
         array[ind_nans] = np.nan
-        hlp.to_netcdf(array, dem_da.coords, name, crop)
+        hlp.to_netcdf(array, dem_da.coords, name, crop, outdir)
 
 
 @hlp.timer
@@ -365,7 +374,7 @@ def _rotate_kernels(kernel, angle):
     return ma.MaskedArray.filled(kernels_rot, 0).astype(np.float32)
 
 
-def compute_gradient(dem_da, scales, sig_ratios=1, ind_nans=[], crop=None):
+def compute_gradient(dem_da, scales, sig_ratios=1, ind_nans=[], crop=None, outdir="."):
     """Wrapper to 'gradient' function to launch computations for all scales
     and save outputs as netCDF files.
 
@@ -388,6 +397,8 @@ def compute_gradient(dem_da, scales, sig_ratios=1, ind_nans=[], crop=None):
         If specified the outputs are cropped to the given extend. Keys should be
         the coordinates labels of dem_da and values should be slices of [min,max]
         extend. Default is None.
+    outdir (optional) : string
+        The path to the output directory. Save to working directory by default.
 
     See also
     --------
@@ -419,7 +430,7 @@ def compute_gradient(dem_da, scales, sig_ratios=1, ind_nans=[], crop=None):
 
         for array, name in zip(arrays, names):
             array[ind_nans] = np.nan
-            hlp.to_netcdf(array, dem_da.coords, name, crop)
+            hlp.to_netcdf(array, dem_da.coords, name, crop, outdir)
 
         del arrays
 

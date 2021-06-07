@@ -37,7 +37,7 @@ def get_dem_netcdf(path_dem):
     return dem_da.where(dem_da > CFG.min_elevation)
 
 
-def to_netcdf(array, coords, name, crop=None):
+def to_netcdf(array, coords, name, crop=None, outdir="."):
     """Save an array of topographic descriptors in NetCDF. It is first converted
     into a xarray DataArray with the same coordinates as the input DEM DataArray
     and a specified name.
@@ -53,12 +53,15 @@ def to_netcdf(array, coords, name, crop=None):
         The array is cropped to the given extend before being saved. Keys should
         be coordinates labels as in coords and values should be slices of [min,max]
         extend. Default is None.
+    outdir (optional) : string
+        The path to the output directory. Save to working directory by default.
     """
 
     name = str.upper(name)
+    outdir = Path(outdir)
     da = xr.DataArray(array, coords=coords, name=name).sel(crop)
     filename = f"topo_{name}.nc"
-    da.to_dataset().to_netcdf(CFG.path.output / filename)
+    da.to_dataset().to_netcdf(outdir / filename)
 
 
 def scale_to_pixel(scales, dem_da):
@@ -83,7 +86,7 @@ def scale_to_pixel(scales, dem_da):
         Resolution in meters of each DEM grid points in the x and y directions.
     """
     check_dem(dem_da)
-    x_coords, y_coords = dem_da['x'].values, dem_da['y'].values
+    x_coords, y_coords = dem_da["x"].values, dem_da["y"].values
     epsg_code = f"epsg:{int(dem_da.attrs['crs'].split('epsg:')[1])}"
     if epsg_code == "epsg:4326":
         logger.warning(
@@ -176,9 +179,9 @@ def check_dem(dem):
         raise ValueError("dem must be a xr.DataArray")
     if dem.ndim != 2:
         raise ValueError("dem must be a two-dimensional array")
-    if dem.dims != ('y', 'x'):
+    if dem.dims != ("y", "x"):
         raise ValueError("dem dimensions must be ('y', 'x')")
-    if not 'crs' in dem.attrs:
+    if not "crs" in dem.attrs:
         raise KeyError("missing 'crs' attribute in dem")
-    if not 'epsg:' in dem.attrs['crs'].lower():
+    if not "epsg:" in dem.attrs["crs"].lower():
         raise ValueError("missing 'epsg:' key in the 'crs' attribute")
