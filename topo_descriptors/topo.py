@@ -1,7 +1,9 @@
 import logging
+from numba.np.ufunc import parallel
 
 import numpy as np
 import numpy.ma as ma
+from numba import njit, prange
 from scipy import ndimage, signal
 from multiprocessing import Pool, cpu_count
 
@@ -545,4 +547,204 @@ def _normalize_dxy(dx, dy, res_meters):
     dy /= y_res
 
 
-# TODO: Sx and Relief
+def compute_Sx(dem, azimuth, radius, height=10., crop=None):
+    """Wrapper to 'Sx' function to launch computations and save
+    outputs as netCDF files.
+
+    Parameters
+    ----------
+    dem_da : xarray DataArray representing the DEM and its grid coordinates.
+    azimuth : array or list of scalar(s)
+        Range of azimuth angles in degrees to define a cone around (x_v, y_v),
+        North is 0°, direction is clockwise. Example: [-2, -1, 0, 1, 2]
+    radius : list of two scalars
+        Lower and upper bounds for the radius, in meters. Example: [50, 1000]
+    height (optional): scalar
+        Parameter that accounts for instrument heights and
+        reduce the impact of small proximal terrain perturbations.
+    crop (optional) : dict
+        If specified the outputs are cropped to the given extend. Keys should be
+        the coordinates labels of dem_da and values should be slices of [min,max]
+        extend. Default is None.
+
+    See also
+    --------
+    Sx, _Sx_kernel, _Sx_bresenhamline
+    """
+    
+    
+    array = Sx(dem, azimuth, radius, height)
+
+    name = _Sx_name(radius, azimuth)
+    name = str.upper(name)
+    hlp.to_netcdf(array, dem.coords, name, crop)
+    return 
+
+
+def Sx(dem, azimuth, radius, azimuth_range=5., height=10.):
+    """Compute the Sx over a digital elevation model.
+    
+    The Sx represents the maximum slope among all imaginary lines connecting a
+    given pixel with all the ones lying in a specific direction and within a
+    specified distance (Winstral et al., 2017). The Sx is a proven wind-specific
+    terrain parameterization, as it is able to differentiate the slopes based
+    on given wind directions and identify sheltered and exposed locations with
+    respect to the incoming wind.
+    Note that this routine computes one azimuth at a time. It is accelerated with
+    Numba's Just In Time compilation, but is still computationally expensive.
+
+    Parameters
+    ----------
+    dem : array representing the DEM.
+    azimuth : array or list of scalar(s)
+        Range of azimuth angles in degrees to define a cone around (x_v, y_v),
+        North is 0°, direction is clockwise. Example: [-2, -1, 0, 1, 2]
+    radius : list of two scalars
+        Lower and upper bounds for the radius, in meters. Example: [50, 1000]
+    height (optional): scalar
+        Parameter that accounts for instrument heights and
+        reduce the impact of small proximal terrain perturbations.
+
+    Returns
+    -------
+    array with Sx values for one azimuth
+
+    See also
+    --------
+    _Sx_kernel, _Sx_rolling
+    """
+
+    # compute horizontal distance and indices of pixels within the cone
+    distance, idx = _Sx_kernel(dem, azimuth, radius)
+
+    # move the "kernel" to calculate the Sx (accelerated with numba)
+    sx = _Sx_rolling(dem.values, distance, idx, height)
+
+    return sx
+
+
+@njit(parallel=True)
+def _Sx_rolling(dem, distance, idx, height):
+    """ Convolve the cone-shaped kernel.
+    """
+    window = int(distance.shape[0]/2)
+    ny, nx = dem.shape
+    sx = np.zeros_like(dem)
+    
+    # rolling window
+    for j in prange(window, ny-window):
+        for i in prange(window, nx-window):
+            
+            dem_ = dem[j-window:j+window, i-window:i+window]
+            
+            # compute tangent z / distance between P0 and all points   
+            z = (dem_ - (dem_[window,window]+height))
+            elev_angle = np.rad2deg(np.arctan(z / distance))
+               
+            # convert to int and tuple, check that ix is within dem bounds         
+            ix_ = (idx[:,0], idx[:,1])
+            a = np.where((idx[:,0] >= 0) & (idx[:,0] <= dem_.shape[0]) & \
+                         (idx[:,1] > 0) & (idx[:,1] < dem_.shape[1]))
+            ix_ = (ix_[0][a], ix_[1][a])
+            
+
+            # find the maximum angle in the cone
+            sx[j,i] = np.nanmax(np.array([elev_angle[j,i] for j,i in list(zip(ix_[0],ix_[1]))]))
+            
+    return sx
+
+
+def _Sx_kernel(dem, azimuth, radius, azimuth_range=5.):
+    """ Compute indices of pixels lying in the area delimited by azimuth and radius,
+        along with their distance from the target point.
+
+        The Bresenham's line algorithm is used to find indices by ray tracing a line.
+
+        See also
+        --------
+        _Sx_bresenhamline, _Sx_bresenhamline_nslope
+
+    """
+    # create a window
+    radius_pxl, res_meters = hlp.scale_to_pixel(radius, dem)
+    window = radius_pxl[1]
+    x = np.arange(2*window)
+    y = np.arange(2*window)
+    x, y = np.meshgrid(x, y)
+
+    # calculate distances from center (x_v, y_v) for all points in the window
+    azimuth_rad = np.deg2rad(azimuth)
+    dx = res_meters['x'].mean()
+    dy = res_meters['y'].mean()
+    distance = np.sqrt((((y - window)*dy)**2) + ((x - window)*dx)**2)
+
+    # exclude values outside the radius
+    mask = (distance < radius[0]) & (distance > radius[1])
+    distance[mask] = np.nan
+
+    # center of the window  
+    target = np.array([window, window])
+
+    # changes in latitude and longitude from center to points on max radius
+    dlat_pxl =  np.rint(radius[1]/dy * np.cos(azimuth_rad)) 
+    dlon_pxl =  np.rint(radius[1]/dx * np.sin(azimuth_rad))
+
+    # loop over all azimuths of the cone
+    for i, az in enumerate(azimuth):
+        
+        # point at distance max(radius) in direction of az
+        source = np.array([window + dlat_pxl[i], window + dlon_pxl[i]])
+
+        # find indices of grid cells on the ray path between target and source
+        if i == 0:
+            idx = _Sx_bresenhamline(source, target)
+        else:
+            idx_ = _Sx_bresenhamline(source, target)
+            idx = np.concatenate((idx,idx_))
+
+    return distance, idx.astype(np.int64)
+
+
+def _Sx_bresenhamline(start, end, max_iter=-1):
+    '''Returns npts lines of length max_iter each. (npts x max_iter x 2)'''
+    
+    if max_iter == -1:
+        max_iter = np.nanmax(np.abs(end - start))
+
+    nslope = _Sx_bresenhamline_nslope(end - start)
+
+    # steps to iterate on
+    stepseq = np.arange(1, max_iter + 1)
+    stepmat = np.zeros((stepseq.shape[0],2))
+    for i in range(2):
+        stepmat[:,i]=stepseq
+        
+    # some hacks for broadcasting properly
+    bline = start + nslope * stepmat
+    
+    # Approximate to nearest int
+    return np.rint(bline).reshape(-1, start.shape[-1])
+
+def _Sx_bresenhamline_nslope(slope):
+    '''Normalize slope for Bresenham's line algorithm.'''
+    scale = np.array(np.nanmax(np.abs(slope))).reshape(-1, 1)
+    zeroslope = (scale == 0).all()
+    
+    if scale[0,0] == 0:
+        scale[0,0] == 1
+
+    normalizedslope = slope / scale
+    if zeroslope:
+        normalizedslope[0] = np.zeros(2)
+    return normalizedslope
+
+def _Sx_name(radius, azimuth):
+    """Return name for the array in output of the Sx function"""
+
+    az_ = np.mean(azimuth)
+    add = f"_RADIUS{int(radius[0])}-{int(radius[1])}_AZIMUTH{int(az_)}"
+    return f"SX{add}"
+
+
+# TODO: Relief
+
