@@ -557,18 +557,25 @@ def _normalize_dxy(dx, dy, res_meters):
     dy /= y_res
 
 
-def compute_Sx(dem, azimuth, radius, height=10., crop=None):
+def compute_Sx(dem, azimuth, radius, height=10., azimuth_arc=10.,
+                azimuth_steps=15, radius_min=0., crop=None):
     """Wrapper to 'Sx' function to launch computations and save
     outputs as netCDF files.
 
     Parameters
     ----------
     dem_da : xarray DataArray representing the DEM and its grid coordinates.
-    azimuth : array or list of scalar(s)
-        Range of azimuth angles in degrees to define a cone around (x_v, y_v),
-        North is 0°, direction is clockwise. Example: [-2, -1, 0, 1, 2]
-    radius : list of two scalars
-        Lower and upper bounds for the radius, in meters. Example: [50, 1000]
+    azimuth : scalar
+        Azimuth angle in degrees for imaginary lines.
+    radius : scalar
+        Maximum distance in meters for the imaginary lines.
+    azimuth_arc (optional): scalar
+        Angle of the circular sector centered around 'azimuth'.
+    azimuth_steps (optional):
+        Number of lines traced to find pixels within the circular sector.
+        A higher number leads to more precise but longer computations.
+    radius_min (optional): scalar
+        Minimum value of radius below which pixels are excluded from imaginary lines.
     height (optional): scalar
         Parameter that accounts for instrument heights and
         reduce the impact of small proximal terrain perturbations.
@@ -583,7 +590,15 @@ def compute_Sx(dem, azimuth, radius, height=10., crop=None):
     """
     
     
-    array = Sx(dem, azimuth, radius, height)
+    array = Sx(
+        dem,
+        azimuth,
+        radius,
+        height=height,
+        azimuth_arc=azimuth_arc,
+        azimuth_steps=azimuth_steps,
+        radius_min=radius_min
+        )
 
     name = _Sx_name(radius, azimuth)
     name = str.upper(name)
@@ -591,7 +606,8 @@ def compute_Sx(dem, azimuth, radius, height=10., crop=None):
     return 
 
 
-def Sx(dem, azimuth, radius, azimuth_range=5., height=10.):
+def Sx(dem, azimuth, radius, height=10., azimuth_arc=10.,
+                azimuth_steps=15, radius_min=0.):
     """Compute the Sx over a digital elevation model.
     
     The Sx represents the maximum slope among all imaginary lines connecting a
@@ -606,11 +622,17 @@ def Sx(dem, azimuth, radius, azimuth_range=5., height=10.):
     Parameters
     ----------
     dem : array representing the DEM.
-    azimuth : array or list of scalar(s)
-        Range of azimuth angles in degrees to define a cone around (x_v, y_v),
-        North is 0°, direction is clockwise. Example: [-2, -1, 0, 1, 2]
-    radius : list of two scalars
-        Lower and upper bounds for the radius, in meters. Example: [50, 1000]
+    azimuth : scalar
+        Azimuth angle in degrees for imaginary lines.
+    radius : scalar
+        Maximum distance in meters for the imaginary lines.
+    azimuth_arc (optional): scalar
+        Angle of the circular sector centered around 'azimuth'.
+    azimuth_steps (optional):
+        Number of lines traced to find pixels within the circular sector.
+        A higher number leads to more precise but longer computations.
+    radius_min (optional): scalar
+        Minimum value of radius below which pixels are excluded from imaginary lines.
     height (optional): scalar
         Parameter that accounts for instrument heights and
         reduce the impact of small proximal terrain perturbations.
@@ -624,7 +646,7 @@ def Sx(dem, azimuth, radius, azimuth_range=5., height=10.):
     _Sx_kernel, _Sx_rolling
     """
 
-    # compute horizontal distance and indices of pixels within the cone
+    # finds pixels on imaginary lines and their distance from the center
     distance, idx = _Sx_kernel(dem, azimuth, radius)
 
     # move the "kernel" to calculate the Sx (accelerated with numba)
@@ -664,7 +686,7 @@ def _Sx_rolling(dem, distance, idx, height):
     return sx
 
 
-def _Sx_kernel(dem, azimuth, radius, azimuth_range=5.):
+def _Sx_kernel(dem, azimuth, radius):
     """ Compute indices of pixels lying in the area delimited by azimuth and radius,
         along with their distance from the target point.
 
