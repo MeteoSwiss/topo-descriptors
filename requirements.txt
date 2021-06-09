@@ -5,3 +5,4 @@ xarray
 utm
 scipy
 yaconfigobject
+numba
