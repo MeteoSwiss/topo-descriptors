@@ -740,8 +740,8 @@ def _sx_bresenhamlines(start, end):
     bsum = np.abs(blines-end).sum(axis=2)
     mask = np.diff(bsum, prepend=bsum[:,0:1]) <= 0
     blines = blines[mask].reshape(-1, start.shape[-1])
-    mask = np.all(blines != window_center, axis=1)
-    blines = blines[mask]
+    mask = np.all(blines == end, axis=1)
+    blines = blines[~mask]
 
     return blines
 
