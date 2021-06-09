@@ -32,7 +32,7 @@ def compute_tpi(dem_da, scales, smth_factors=None, ind_nans=[], crop=None, outdi
         Contains the (row, column) indices of the NaNs in the original DEM to be
         reassigned after computations. NaNs in the original DEM should be
         interpolated prior computations as they propagate in convolutions with
-        the fast fourrier transform method (scipy.signal.convolve).
+        the fast Fourier transform method (scipy.signal.convolve).
     crop (optional) : dict
         If specified the outputs are cropped to the given extend. Keys should be
         the coordinates labels of dem_da and values should be slices of [min,max]
@@ -42,7 +42,7 @@ def compute_tpi(dem_da, scales, smth_factors=None, ind_nans=[], crop=None, outdi
 
     See also
     --------
-    tpi, _tpi_kernel
+    tpi, circular_kernel
     """
 
     hlp.check_dem(dem_da)
@@ -92,7 +92,10 @@ def tpi(dem, size, sigma=None):
     scipy.signal.convolve, scipy.ndimage.gaussian_filter
     """
 
-    kernel = _tpi_kernel(size)
+    kernel = circular_kernel(size)
+    # exclude mid point from the kernel
+    kernel[int(size / 2), int(size / 2)] = 0
+
     if sigma:
         dem = ndimage.gaussian_filter(dem, sigma)
 
@@ -109,13 +112,14 @@ def _tpi_name(scale, smth_factor):
     return f"TPI_{scale}M{add}"
 
 
-def _tpi_kernel(size):
-    """Generate a circular kernel to compute TPI.
+def circular_kernel(size):
+    """Generate a circular kernel.
 
     Parameters
     ----------
     size : int
-        Size of the kernel.
+        Size of the circular kernel (its diameter). For size < 5, the kernel is
+        a square instead of a circle.
 
     Returns
     -------
@@ -130,8 +134,107 @@ def _tpi_kernel(size):
         circle = (xx - middle) ** 2 + (yy - middle) ** 2
         kernel = np.asarray(circle <= (middle ** 2), dtype=np.float32)
 
-    kernel[middle, middle] = 0
     return kernel
+
+
+def compute_std(dem_da, scales, smth_factors=None, ind_nans=[], crop=None, outdir="."):
+    """Wrapper to 'std' function to launch computations for all scales and save
+    outputs as netCDF files.
+
+    Parameters
+    ----------
+    dem_da : xarray DataArray representing the DEM and its grid coordinates.
+    scales : scalar or list of scalars
+        Scale(s) in meters on which we want to compute the TPI.
+        Corresponds to the diameter of the kernel used to compute it.
+    smth_factors (optional) : scalar or None or list with a combination of both.
+        Fraction(s) of the scale(s) at which the DEM is smoothed first (with a
+        gaussian filter). If None (default), no prior smoothing is performed.
+        If a scalar, the same fraction is used to determine the smoothing scale
+        of all specified scales. If a list, must match the length of arg 'scales'.
+    ind_nans (optional) : tuple of two 1D arrays
+        Contains the (row, column) indices of the NaNs in the original DEM to be
+        reassigned after computations. NaNs in the original DEM should be
+        interpolated prior computations as they propagate in convolutions with
+        the fast Fourier transform method (scipy.signal.convolve).
+    crop (optional) : dict
+        If specified the outputs are cropped to the given extend. Keys should be
+        the coordinates labels of dem_da and values should be slices of [min,max]
+        extend. Default is None.
+    outdir (optional) : string
+        The path to the output directory. Save to working directory by default.
+
+    See also
+    --------
+    std, circular_kernel
+    """
+
+    hlp.check_dem(dem_da)
+    logger.info(f"***Starting STD computation for scales {scales} meters***")
+    if not hasattr(scales, "__iter__"):
+        scales = [scales]
+    if not hasattr(smth_factors, "__iter__"):
+        smth_factors = [smth_factors] * len(scales)
+
+    scales_pxl, _ = hlp.scale_to_pixel(scales, dem_da)
+    sigmas = hlp.get_sigmas(smth_factors, scales_pxl)
+
+    for idx, scale_pxl in enumerate(scales_pxl):
+        logger.info(
+            f"Computing scale {scales[idx]} meters with smoothing factor"
+            f" {smth_factors[idx]} ..."
+        )
+        name = _std_name(scales[idx], smth_factors[idx])
+        array = std(dem=dem_da.values, size=scale_pxl, sigma=sigmas[idx])
+
+        array[ind_nans] = np.nan
+        hlp.to_netcdf(array, dem_da.coords, name, crop, outdir)
+        del array
+
+
+@hlp.timer
+def std(dem, size, sigma=None):
+    """Compute the standard deviation over a digital elevation model within
+    a rolling window.
+
+    Parameters
+    ----------
+    dem : array representing the DEM.
+    size : int
+        Size of the kernel for the convolution. Represents the diameter (i.e. scale)
+        in pixels at which the std is computed.
+    sigma (optional) : scalar
+        If provided, the DEM is first smoothed with a gaussian filter of standard
+        deviation sigma (in pixel size).
+
+    Returns
+    -------
+    array with local standard deviation values
+
+    See also
+    --------
+    scipy.signal.convolve, scipy.ndimage.gaussian_filter
+    """
+    kernel = circular_kernel(size)
+    kernel_sum = np.sum(kernel)
+    if sigma:
+        dem = ndimage.gaussian_filter(dem, sigma)
+
+    squared_dem = dem.astype("int32") ** 2
+    sum_dem = signal.convolve(dem, kernel, mode="same")
+    sum_squared_dem = signal.convolve(squared_dem, kernel, mode="same")
+
+    variance = (sum_squared_dem - sum_dem ** 2 / kernel_sum) / (kernel_sum - 1)
+    variance = np.clip(variance, 0, None)  # avoid small negative values
+
+    return np.sqrt(variance)
+
+
+def _std_name(scale, smth_factor):
+    """Return name for the array in output of the tpi function"""
+
+    add = f"_SMTHFACT{smth_factor:.3g}" if smth_factor else ""
+    return f"STD_{scale}M{add}"
 
 
 def compute_valley_ridge(
@@ -156,7 +259,7 @@ def compute_valley_ridge(
     mode : {valley, ridge}
         Whether to compute the valley or ridge index.
     flat_list (optional) : list of floats in [0,1[
-        Fractions of flat along the center ligne of the V-shape kernels. A certain
+        Fractions of flat along the center line of the V-shape kernels. A certain
         amount of flat is use to approximate the shape of glacial valleys.
         Default is [0, 0.15, 0.3].
     smth_factors (optional) : scalar or None or list with a combination of both.
@@ -168,7 +271,7 @@ def compute_valley_ridge(
         Contains the (row, column) indices of the NaNs in the original DEM to be
         reassigned after computations. NaNs in the original DEM should be
         interpolated prior computations as they propagate in convolutions with
-        the fast fourrier transform method (scipy.signal.convolve).
+        the fast Fourier transform method (scipy.signal.convolve).
     crop (optional) : dict
         If specified the outputs are cropped to the given extend. Keys should be
         the coordinates labels of dem_da and values should be slices of [min,max]
@@ -243,7 +346,7 @@ def valley_ridge(dem, size, mode, flat_list=[0, 0.15, 0.3], sigma=None):
     mode : {valley, ridge}
         Whether to compute the valley or ridge index.
     flat_list (optional) : list of floats in [0,1[
-        Fractions of flat along the center ligne of the V-shape kernels. A certain
+        Fractions of flat along the center line of the V-shape kernels. A certain
         amount of flat is use to approximate the shape of glacial valleys.
         Default is [0, 0.15, 0.3].
     sigma (optional) : scalar
@@ -315,7 +418,7 @@ def _valley_kernels(size, flat_list):
     size : int
         Size of the kernel.
     flat_list : list of floats in [0,1[
-        Fractions of flat along the center ligne of the V-shape kernels. A certain
+        Fractions of flat along the center line of the V-shape kernels. A certain
         amount of flat is use to approximate the shape of glacial valleys.
 
     Returns
@@ -351,7 +454,7 @@ def _ridge_kernels(size, flat_list):
     size : int
         Size of the kernel.
     flat_list : list of floats in [0,1[
-        Fractions of flat along the center ligne of the V-shape kernels. A certain
+        Fractions of flat along the center line of the V-shape kernels. A certain
         amount of flat is use to approximate the shape of glacial valleys.
 
     Returns
