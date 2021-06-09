@@ -557,7 +557,7 @@ def _normalize_dxy(dx, dy, res_meters):
     dy /= y_res
 
 
-def compute_Sx(dem, azimuth, radius, height=10., azimuth_arc=10.,
+def compute_sx(dem, azimuth, radius, height=10., azimuth_arc=10.,
                 azimuth_steps=15, radius_min=0., crop=None):
     """Wrapper to 'Sx' function to launch computations and save
     outputs as netCDF files.
@@ -590,7 +590,7 @@ def compute_Sx(dem, azimuth, radius, height=10., azimuth_arc=10.,
     """
     
     
-    array = Sx(
+    array = sx(
         dem,
         azimuth,
         radius,
@@ -600,13 +600,13 @@ def compute_Sx(dem, azimuth, radius, height=10., azimuth_arc=10.,
         radius_min=radius_min
         )
 
-    name = _Sx_name(radius, azimuth)
+    name = _sx_name(radius, azimuth)
     name = str.upper(name)
     hlp.to_netcdf(array, dem.coords, name, crop)
     return 
 
 
-def Sx(dem, azimuth, radius, height=10., azimuth_arc=10.,
+def sx(dem, azimuth, radius, height=10., azimuth_arc=10.,
                 azimuth_steps=15, radius_min=0.):
     """Compute the Sx over a digital elevation model.
     
@@ -628,9 +628,11 @@ def Sx(dem, azimuth, radius, height=10., azimuth_arc=10.,
         Maximum distance in meters for the imaginary lines.
     azimuth_arc (optional): scalar
         Angle of the circular sector centered around 'azimuth'.
-    azimuth_steps (optional):
+        Set to zero in order to draw a single line.
+    azimuth_steps (optional): scalar integer
         Number of lines traced to find pixels within the circular sector.
         A higher number leads to more precise but longer computations.
+        Defaults to 1 when 'azimuth_arc' is 0. 
     radius_min (optional): scalar
         Minimum value of radius below which pixels are excluded from imaginary lines.
     height (optional): scalar
@@ -643,134 +645,134 @@ def Sx(dem, azimuth, radius, height=10., azimuth_arc=10.,
 
     See also
     --------
-    _Sx_kernel, _Sx_rolling
+    _sx_distance, _sx_source_idx_delta, _sx_bresenhamlines, _sx_rolling
     """
 
-    # finds pixels on imaginary lines and their distance from the center
-    distance, idx = _Sx_kernel(dem, azimuth, radius)
 
-    # move the "kernel" to calculate the Sx (accelerated with numba)
-    sx = _Sx_rolling(dem.values, distance, idx, height)
+    if azimuth_arc == 0:
+        azimuth_steps = 1
+
+    # define all azimuths
+    azimuths = np.linspace(azimuth-azimuth_arc/2, azimuth+azimuth_arc/2, azimuth_steps)
+
+    # grid resolutions
+    _ , res_meters = hlp.scale_to_pixel(radius, dem)
+    dx = res_meters['x'].mean()
+    dy = res_meters['y'].mean()
+
+    # horizontal distance in meters from center in a window of size 2*radius
+    window_distance = _sx_distance(radius, dx, dy)
+
+    # exclude pixels closer than radius_min
+    window_distance[window_distance < radius_min] = np.nan
+    
+    # indices of pixels that lie at distance radius in direction azimuth
+    window_center = np.floor(np.array(window_distance.shape)/2)
+    source_delta = _sx_source_idx_delta(azimuths, radius, dx, dy)
+    source = (window_center + source_delta).astype(np.int)
+
+    # indices of all pixels between source pixels and target (center)
+    lines_indices = _sx_bresenhamlines(source, window_center)
+    
+    # compute Sx
+    sx = _sx_rolling(dem.values, window_distance, lines_indices, height)
 
     return sx
 
+def _sx_distance(radius, dx, dy):
+    """Compute distance from center in meters in a window of size 'radius'.
+    """
+    
+    dx_abs = np.abs(dx)
+    dy_abs = np.abs(dy)
+    radius_pxl = max(radius/dy_abs, radius/dx_abs)
+
+    # initialize window
+    window = 2*radius_pxl + 1 # must be odd
+    center = np.floor(window/2)
+    x = np.arange(window)
+    y = np.arange(window)
+    x, y = np.meshgrid(x, y)
+
+    # calculate distances from center for all points in the window
+    distances = np.sqrt((((y - center)*dy)**2) + ((x - center)*dx)**2)
+
+    return distances
+
+def _sx_source_idx_delta(azimuths, radius, dx, dy):
+    """Compute indices of pixels that lie at a distance 'radius' from
+    the target, in the direction of 'azimuths'.
+    """
+
+    azimuths_rad = np.deg2rad(azimuths)
+    delta_y_idx =  np.rint(radius/dy * np.cos(azimuths_rad)) 
+    delta_x_idx =  np.rint(radius/dx * np.sin(azimuths_rad))
+
+    delta = np.column_stack([delta_y_idx, delta_x_idx])
+
+    return delta
+
+def _sx_bresenhamlines(start, end):
+    """Compute indices of all pixels that lie between two sets of pixels.
+    """
+    
+    max_iter = np.max(np.max(np.abs(end - start), axis=1))
+    npts, dim = start.shape
+    
+    slope = end - start
+    scale = np.max(np.abs(slope), axis=1).reshape(-1, 1)
+    zeroslope = (scale == 0).all(1)
+    scale[zeroslope] = np.ones(1)
+    normalizedslope = np.array(slope, dtype=np.double) / scale
+    normalizedslope[zeroslope] = np.zeros(slope[0].shape)
+
+    # steps to iterate on
+    stepseq = np.arange(1, max_iter+1)
+    stepmat = np.tile(stepseq, (dim, 1)).T
+
+    # some hacks for broadcasting properly
+    blines = start[:, np.newaxis, :] + normalizedslope[:, np.newaxis, :] * stepmat
+
+    # Approximate to nearest int
+    blines = np.array(np.rint(blines), dtype=start.dtype)
+
+    # Stop lines before center
+    bsum = np.abs(blines-end).sum(axis=2)
+    mask = np.diff(bsum, prepend=bsum[:,0:1]) <= 0
+    blines = blines[mask].reshape(-1, start.shape[-1])
+    mask = np.all(blines != window_center, axis=1)
+    blines = blines[mask]
+
+    return blines
 
 @njit(parallel=True)
-def _Sx_rolling(dem, distance, idx, height):
-    """ Convolve the cone-shaped kernel.
+def _sx_rolling(dem, distance, blines, height):
+    """Compute Sx values for the array with a loop over all elements.
     """
+
     window = int(distance.shape[0]/2)
     ny, nx = dem.shape
+    distance = np.array([distance[j,i] for j,i in list(zip(blines[:,0],blines[:,1]))])
+    blines_centered = (blines - window)
+
     sx = np.zeros_like(dem)
-    
-    # rolling window
     for j in prange(window, ny-window):
         for i in prange(window, nx-window):
             
-            dem_ = dem[j-window:j+window, i-window:i+window]
+            j_blines = j+blines_centered[:,0]
+            i_blines = i + blines_centered[:,1]
+            dem_blines = np.array([dem[j,i] for j,i in list(zip(j_blines,i_blines))])
             
             # compute tangent z / distance between P0 and all points   
-            z = (dem_ - (dem_[window,window]+height))
+            z = (dem_blines - (dem[j,i]+height))
             elev_angle = np.rad2deg(np.arctan(z / distance))
-               
-            # convert to int and tuple, check that ix is within dem bounds         
-            ix_ = (idx[:,0], idx[:,1])
-            a = np.where((idx[:,0] >= 0) & (idx[:,0] <= dem_.shape[0]) & \
-                         (idx[:,1] > 0) & (idx[:,1] < dem_.shape[1]))
-            ix_ = (ix_[0][a], ix_[1][a])
-            
-
+        
             # find the maximum angle in the cone
-            sx[j,i] = np.nanmax(np.array([elev_angle[j,i] for j,i in list(zip(ix_[0],ix_[1]))]))
-            
+            sx[j,i] = np.nanmax(elev_angle)
+    
     return sx
 
-
-def _Sx_kernel(dem, azimuth, radius):
-    """ Compute indices of pixels lying in the area delimited by azimuth and radius,
-        along with their distance from the target point.
-
-        The Bresenham's line algorithm is used to find indices by ray tracing a line.
-
-        See also
-        --------
-        _Sx_bresenhamline, _Sx_bresenhamline_nslope
-
-    """
-    # create a window
-    radius_pxl, res_meters = hlp.scale_to_pixel(radius, dem)
-    window = radius_pxl[1]
-    x = np.arange(2*window)
-    y = np.arange(2*window)
-    x, y = np.meshgrid(x, y)
-
-    # calculate distances from center (x_v, y_v) for all points in the window
-    azimuth_rad = np.deg2rad(azimuth)
-    dx = res_meters['x'].mean()
-    dy = res_meters['y'].mean()
-    distance = np.sqrt((((y - window)*dy)**2) + ((x - window)*dx)**2)
-
-    # exclude values outside the radius
-    mask = (distance < radius[0]) & (distance > radius[1])
-    distance[mask] = np.nan
-
-    # center of the window  
-    target = np.array([window, window])
-
-    # changes in latitude and longitude from center to points on max radius
-    dlat_pxl =  np.rint(radius[1]/dy * np.cos(azimuth_rad)) 
-    dlon_pxl =  np.rint(radius[1]/dx * np.sin(azimuth_rad))
-
-    # loop over all azimuths of the cone
-    for i, az in enumerate(azimuth):
-        
-        # point at distance max(radius) in direction of az
-        source = np.array([window + dlat_pxl[i], window + dlon_pxl[i]])
-
-        # find indices of grid cells on the ray path between target and source
-        if i == 0:
-            idx = _Sx_bresenhamline(source, target)
-        else:
-            idx_ = _Sx_bresenhamline(source, target)
-            idx = np.concatenate((idx,idx_))
-
-    return distance, idx.astype(np.int64)
-
-
-def _Sx_bresenhamline(start, end, max_iter=-1):
-    '''Returns npts lines of length max_iter each. (npts x max_iter x 2)'''
-    
-    if max_iter == -1:
-        max_iter = np.nanmax(np.abs(end - start))
-
-    nslope = _Sx_bresenhamline_nslope(end - start)
-
-    # steps to iterate on
-    stepseq = np.arange(1, max_iter + 1)
-    stepmat = np.zeros((stepseq.shape[0],2))
-    for i in range(2):
-        stepmat[:,i]=stepseq
-        
-    # some hacks for broadcasting properly
-    bline = start + nslope * stepmat
-    
-    # Approximate to nearest int
-    return np.rint(bline).reshape(-1, start.shape[-1])
-
-def _Sx_bresenhamline_nslope(slope):
-    '''Normalize slope for Bresenham's line algorithm.'''
-    scale = np.array(np.nanmax(np.abs(slope))).reshape(-1, 1)
-    zeroslope = (scale == 0).all()
-    
-    if scale[0,0] == 0:
-        scale[0,0] == 1
-
-    normalizedslope = slope / scale
-    if zeroslope:
-        normalizedslope[0] = np.zeros(2)
-    return normalizedslope
-
-def _Sx_name(radius, azimuth):
+def _sx_name(radius, azimuth):
     """Return name for the array in output of the Sx function"""
 
     az_ = np.mean(azimuth)
