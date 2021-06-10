@@ -3,9 +3,10 @@ from numba.np.ufunc import parallel
 
 import numpy as np
 import numpy.ma as ma
+import xarray as xr
 from numba import njit, prange
 from scipy import ndimage, signal
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool, Value, cpu_count
 
 import topo_descriptors.helpers as hlp
 from topo_descriptors import CFG
@@ -661,7 +662,7 @@ def _normalize_dxy(dx, dy, res_meters):
 
 
 def compute_sx(
-    dem,
+    dem_da,
     azimuth,
     radius,
     height=10.0,
@@ -669,6 +670,7 @@ def compute_sx(
     azimuth_steps=15,
     radius_min=0.0,
     crop=None,
+    outdir=".",
 ):
     """Wrapper to 'Sx' function to launch computations and save
     outputs as netCDF files.
@@ -697,11 +699,15 @@ def compute_sx(
 
     See also
     --------
-    Sx, _Sx_kernel, _Sx_bresenhamline
+    sx, _sx_distance, _sx_source_idx_delta, _sx_bresenhamlines, _sx_rolling
     """
+    hlp.check_dem(dem_da)
+    logger.info(
+        f"***Starting Sx computation for azimuth {azimuth} meters and radius {radius}***"
+    )
 
     array = sx(
-        dem,
+        dem_da,
         azimuth,
         radius,
         height=height,
@@ -712,12 +718,12 @@ def compute_sx(
 
     name = _sx_name(radius, azimuth)
     name = str.upper(name)
-    hlp.to_netcdf(array, dem.coords, name, crop)
-    return
+    hlp.to_netcdf(array, dem_da.coords, name, crop, outdir)
 
 
+@hlp.timer
 def sx(
-    dem,
+    dem_da,
     azimuth,
     radius,
     height=10.0,
@@ -738,7 +744,7 @@ def sx(
 
     Parameters
     ----------
-    dem : array representing the DEM.
+    dem_da : xarray DataArray representing the DEM and its grid coordinates.
     azimuth : scalar
         Azimuth angle in degrees for imaginary lines.
     radius : scalar
@@ -765,6 +771,9 @@ def sx(
     _sx_distance, _sx_source_idx_delta, _sx_bresenhamlines, _sx_rolling
     """
 
+    if not isinstance(dem_da, xr.DataArray):
+        raise TypeError("Argument 'dem_da' must be a xr.DataArray.")
+
     if azimuth_arc == 0:
         azimuth_steps = 1
 
@@ -774,7 +783,7 @@ def sx(
     )
 
     # grid resolutions
-    _, res_meters = hlp.scale_to_pixel(radius, dem)
+    _, res_meters = hlp.scale_to_pixel(radius, dem_da)
     dx = res_meters["x"].mean()
     dy = res_meters["y"].mean()
 
@@ -793,7 +802,7 @@ def sx(
     lines_indices = _sx_bresenhamlines(source, window_center)
 
     # compute Sx
-    sx = _sx_rolling(dem.values, window_distance, lines_indices, height)
+    sx = _sx_rolling(dem_da.values, window_distance, lines_indices, height)
 
     return sx
 
@@ -897,8 +906,7 @@ def _sx_rolling(dem, distance, blines, height):
 def _sx_name(radius, azimuth):
     """Return name for the array in output of the Sx function"""
 
-    az_ = np.mean(azimuth)
-    add = f"_RADIUS{int(radius[0])}-{int(radius[1])}_AZIMUTH{int(az_)}"
+    add = f"_RADIUS{int(radius[0])}-{int(radius)}_AZIMUTH{int(azimuth)}"
     return f"SX{add}"
 
 
