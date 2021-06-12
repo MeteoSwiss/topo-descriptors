@@ -1,9 +1,12 @@
 import logging
+from numba.np.ufunc import parallel
 
 import numpy as np
 import numpy.ma as ma
+import xarray as xr
+from numba import njit, prange
 from scipy import ndimage, signal
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool, Value, cpu_count
 
 import topo_descriptors.helpers as hlp
 from topo_descriptors import CFG
@@ -658,4 +661,253 @@ def _normalize_dxy(dx, dy, res_meters):
     dy /= y_res
 
 
-# TODO: Sx and Relief
+def compute_sx(
+    dem_da,
+    azimuth,
+    radius,
+    height=10.0,
+    azimuth_arc=10.0,
+    azimuth_steps=15,
+    radius_min=0.0,
+    crop=None,
+    outdir=".",
+):
+    """Wrapper to 'Sx' function to launch computations and save
+    outputs as netCDF files.
+
+    Parameters
+    ----------
+    dem_da : xarray DataArray representing the DEM and its grid coordinates.
+    azimuth : scalar
+        Azimuth angle in degrees for imaginary lines.
+    radius : scalar
+        Maximum distance in meters for the imaginary lines.
+    azimuth_arc (optional): scalar
+        Angle of the circular sector centered around 'azimuth'.
+    azimuth_steps (optional):
+        Number of lines traced to find pixels within the circular sector.
+        A higher number leads to more precise but longer computations.
+    radius_min (optional): scalar
+        Minimum value of radius below which pixels are excluded from imaginary lines.
+    height (optional): scalar
+        Parameter that accounts for instrument heights and
+        reduce the impact of small proximal terrain perturbations.
+    crop (optional) : dict
+        If specified the outputs are cropped to the given extend. Keys should be
+        the coordinates labels of dem_da and values should be slices of [min,max]
+        extend. Default is None.
+
+    See also
+    --------
+    sx, _sx_distance, _sx_source_idx_delta, _sx_bresenhamlines, _sx_rolling
+    """
+    hlp.check_dem(dem_da)
+    logger.info(
+        f"***Starting Sx computation for azimuth {azimuth} meters and radius {radius}***"
+    )
+
+    array = sx(
+        dem_da,
+        azimuth,
+        radius,
+        height=height,
+        azimuth_arc=azimuth_arc,
+        azimuth_steps=azimuth_steps,
+        radius_min=radius_min,
+    )
+
+    name = _sx_name(radius, azimuth)
+    name = str.upper(name)
+    hlp.to_netcdf(array, dem_da.coords, name, crop, outdir)
+
+
+@hlp.timer
+def sx(
+    dem_da,
+    azimuth,
+    radius,
+    height=10.0,
+    azimuth_arc=10.0,
+    azimuth_steps=15,
+    radius_min=0.0,
+):
+    """Compute the Sx over a digital elevation model.
+
+    The Sx represents the maximum slope among all imaginary lines connecting a
+    given pixel with all the ones lying in a specific direction and within a
+    specified distance (Winstral et al., 2017). The Sx is a proven wind-specific
+    terrain parameterization, as it is able to differentiate the slopes based
+    on given wind directions and identify sheltered and exposed locations with
+    respect to the incoming wind.
+    Note that this routine computes one azimuth at a time. It is accelerated with
+    Numba's Just In Time compilation, but is still computationally expensive.
+
+    Parameters
+    ----------
+    dem_da : xarray DataArray representing the DEM and its grid coordinates.
+    azimuth : scalar
+        Azimuth angle in degrees for imaginary lines.
+    radius : scalar
+        Maximum distance in meters for the imaginary lines.
+    azimuth_arc (optional): scalar
+        Angle of the circular sector centered around 'azimuth'.
+        Set to zero in order to draw a single line.
+    azimuth_steps (optional): scalar integer
+        Number of lines traced to find pixels within the circular sector.
+        A higher number leads to more precise but longer computations.
+        Defaults to 1 when 'azimuth_arc' is 0.
+    radius_min (optional): scalar
+        Minimum value of radius below which pixels are excluded from imaginary lines.
+    height (optional): scalar
+        Parameter that accounts for instrument heights and
+        reduce the impact of small proximal terrain perturbations.
+
+    Returns
+    -------
+    array with Sx values for one azimuth
+
+    See also
+    --------
+    _sx_distance, _sx_source_idx_delta, _sx_bresenhamlines, _sx_rolling
+    """
+
+    if not isinstance(dem_da, xr.DataArray):
+        raise TypeError("Argument 'dem_da' must be a xr.DataArray.")
+
+    if azimuth_arc == 0:
+        azimuth_steps = 1
+
+    # define all azimuths
+    azimuths = np.linspace(
+        azimuth - azimuth_arc / 2, azimuth + azimuth_arc / 2, azimuth_steps
+    )
+
+    # grid resolutions
+    _, res_meters = hlp.scale_to_pixel(radius, dem_da)
+    dx = res_meters["x"].mean()
+    dy = res_meters["y"].mean()
+
+    # horizontal distance in meters from center in a window of size 2*radius
+    window_distance = _sx_distance(radius, dx, dy)
+
+    # exclude pixels closer than radius_min
+    window_distance[window_distance < radius_min] = np.nan
+
+    # indices of pixels that lie at distance radius in direction azimuth
+    window_center = np.floor(np.array(window_distance.shape) / 2)
+    source_delta = _sx_source_idx_delta(azimuths, radius, dx, dy)
+    source = (window_center + source_delta).astype(np.int)
+
+    # indices of all pixels between source pixels and target (center)
+    lines_indices = _sx_bresenhamlines(source, window_center)
+
+    # compute Sx
+    sx = _sx_rolling(dem_da.values, window_distance, lines_indices, height)
+
+    return sx
+
+
+def _sx_distance(radius, dx, dy):
+    """Compute distance from center in meters in a window of size 'radius'."""
+
+    dx_abs = np.abs(dx)
+    dy_abs = np.abs(dy)
+    radius_pxl = max(radius / dy_abs, radius / dx_abs)
+
+    # initialize window
+    window = 2 * radius_pxl + 1  # must be odd
+    center = np.floor(window / 2)
+    x = np.arange(window)
+    y = np.arange(window)
+    x, y = np.meshgrid(x, y)
+
+    # calculate distances from center for all points in the window
+    distances = np.sqrt((((y - center) * dy) ** 2) + ((x - center) * dx) ** 2)
+
+    return distances
+
+
+def _sx_source_idx_delta(azimuths, radius, dx, dy):
+    """Compute indices of pixels that lie at a distance 'radius' from
+    the target, in the direction of 'azimuths'.
+    """
+
+    azimuths_rad = np.deg2rad(azimuths)
+    delta_y_idx = np.rint(radius / dy * np.cos(azimuths_rad))
+    delta_x_idx = np.rint(radius / dx * np.sin(azimuths_rad))
+
+    delta = np.column_stack([delta_y_idx, delta_x_idx])
+
+    return delta.astype(np.int64)
+
+
+def _sx_bresenhamlines(start, end):
+    """Compute indices of all pixels that lie between two sets of pixels."""
+
+    max_iter = np.max(np.max(np.abs(end - start), axis=1))
+    npts, dim = start.shape
+
+    slope = end - start
+    scale = np.max(np.abs(slope), axis=1).reshape(-1, 1)
+    zeroslope = (scale == 0).all(1)
+    scale[zeroslope] = np.ones(1)
+    normalizedslope = np.array(slope, dtype=np.double) / scale
+    normalizedslope[zeroslope] = np.zeros(slope[0].shape)
+
+    # steps to iterate on
+    stepseq = np.arange(1, max_iter + 1)
+    stepmat = np.tile(stepseq, (dim, 1)).T
+
+    # some hacks for broadcasting properly
+    blines = start[:, np.newaxis, :] + normalizedslope[:, np.newaxis, :] * stepmat
+
+    # Approximate to nearest int
+    blines = np.array(np.rint(blines), dtype=start.dtype)
+
+    # Stop lines before center
+    bsum = np.abs(blines - end).sum(axis=2)
+    mask = np.diff(bsum, prepend=bsum[:, 0:1]) <= 0
+    blines = blines[mask].reshape(-1, start.shape[-1])
+    mask = np.all(blines == end, axis=1)
+    blines = blines[~mask]
+
+    return blines
+
+
+@njit(parallel=True)
+def _sx_rolling(dem, distance, blines, height):
+    """Compute Sx values for the array with a loop over all elements."""
+
+    window = int(distance.shape[0] / 2)
+    ny, nx = dem.shape
+    distance = np.array(
+        [distance[j, i] for j, i in list(zip(blines[:, 0], blines[:, 1]))]
+    )
+    blines_centered = blines - window
+
+    sx = np.zeros_like(dem)
+    for j in prange(window, ny - window):
+        for i in prange(window, nx - window):
+
+            j_blines = j + blines_centered[:, 0]
+            i_blines = i + blines_centered[:, 1]
+            dem_blines = np.array([dem[j, i] for j, i in list(zip(j_blines, i_blines))])
+
+            # compute tangent z / distance between P0 and all points
+            z = dem_blines - (dem[j, i] + height)
+            elev_angle = np.rad2deg(np.arctan(z / distance))
+
+            # find the maximum angle in the cone
+            sx[j, i] = np.nanmax(elev_angle)
+
+    return sx
+
+
+def _sx_name(radius, azimuth):
+    """Return name for the array in output of the Sx function"""
+
+    add = f"_RADIUS{int(radius[0])}-{int(radius)}_AZIMUTH{int(azimuth)}"
+    return f"SX{add}"
+
+
+# TODO: Relief

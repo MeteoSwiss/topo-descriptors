@@ -35,7 +35,9 @@ dem.plot()
 
 
 With the DEM data imported as a xarray DataArray, we can use topo-descriptors to
-compute common topographical descriptors, as here for the TPI at 500 meters scale:
+compute two established topographical descriptors: the topographical position index
+(TPI) and the Sx. The TPI describes the elevation of a given point relatively
+to its neighbourhood, here defined on a 500 meter scale:
 
 ```python
 from topo_descriptors import topo, helpers
@@ -45,3 +47,16 @@ scale_pixel, __ = helpers.scale_to_pixel(scale_meters, dem)
 topo.tpi(dem, scale_pixel).plot(vmin=-100, vmax=100, cmap="bwr")
 ```
 ![png](tpi_500M.png)
+
+The Sx is used to describe the horizon in a given direction and spatial scale.
+In the example below we compute the Sx for a 0° azimuth (i.e., looking North)
+and a radius of 500 meters.
+
+```python
+sx_500m = topo.sx(dem, azimuth=0, radius=500)
+xr.DataArray(sx_500m, coords=dem.coords).plot.imshow()
+```
+![png](sx_0azimuth_500radius.png)
+
+Other topographical descriptors are available, such as slope, aspect, derivatives,
+and more.

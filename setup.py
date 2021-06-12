@@ -6,12 +6,13 @@
 from setuptools import setup, find_packages
 
 requirements = [
-    "pandas",
-    "numpy",
     "netcdf4",
-    "xarray",
-    "utm",
+    "numba",
+    "numpy",
+    "pandas",
     "scipy",
+    "utm",
+    "xarray",
     "yaconfigobject",
 ]
 
