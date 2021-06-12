@@ -1,8 +1,8 @@
-pandas
-numpy
 netcdf4
-xarray
-utm
-scipy
-yaconfigobject
 numba
+numpy
+pandas
+scipy
+utm
+xarray
+yaconfigobject
