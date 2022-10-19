@@ -89,7 +89,7 @@ def scale_to_pixel(scales, dem_da):
     check_dem(dem_da)
     x_coords, y_coords = dem_da["x"].values, dem_da["y"].values
     epsg_code = dem_da.attrs["crs"].lower()
-    if epsg_code == "epsg:4326":
+    if "epsg:4326" in epsg_code:
         logger.warning(
             f"Reprojecting coordinates from WGS84 to UTM to obtain units of meters"
         )
