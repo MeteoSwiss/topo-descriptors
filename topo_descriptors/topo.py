@@ -1,9 +1,9 @@
 import logging
-from numba.np.ufunc import parallel
 
 import numpy as np
 import numpy.ma as ma
 import xarray as xr
+import dask.array as da
 from numba import njit, prange
 from scipy import ndimage, signal
 from multiprocessing import Pool, Value, cpu_count
@@ -99,10 +99,14 @@ def tpi(dem, size, sigma=None):
 
     if sigma:
         dem = ndimage.gaussian_filter(dem, sigma)
+    conv_fn = lambda a: ndimage.convolve(a, kernel, mode="constant", cval=np.nan)
 
-    conv = signal.convolve(
-        dem, kernel, mode="same"
-    )  # ndimage.convolve(dem, kernel, mode='reflect')
+    if isinstance(dem.data, da.Array):
+        print("dask")
+        conv = da.map_overlap(conv_fn, dem.data, depth=size * 2, boundary="none")
+    elif isinstance(dem.data, np.ndarray):
+        print("numpy")
+        conv = conv_fn(dem.values)
     return dem - conv / np.sum(kernel)
 
 
