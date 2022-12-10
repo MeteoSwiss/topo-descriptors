@@ -99,7 +99,9 @@ def tpi(dem, size, sigma=None):
 
     if sigma:
         dem = ndimage.gaussian_filter(dem, sigma)
-    conv_fn = lambda a: ndimage.convolve(a, kernel, mode="constant", cval=np.nan)
+    conv_fn = lambda a: ndimage.convolve(
+        a, kernel, mode="constant", cval=np.nan, origin=-1
+    )
 
     if isinstance(dem.data, da.Array):
         print("dask")
