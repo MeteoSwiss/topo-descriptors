@@ -104,10 +104,8 @@ def tpi(dem, size, sigma=None):
     )
 
     if isinstance(dem.data, da.Array):
-        print("dask")
         conv = da.map_overlap(conv_fn, dem.data, depth=size * 2, boundary="none")
     elif isinstance(dem.data, np.ndarray):
-        print("numpy")
         conv = conv_fn(dem.values)
     return dem - conv / np.sum(kernel)
 
