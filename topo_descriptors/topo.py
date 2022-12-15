@@ -99,9 +99,8 @@ def tpi(dem, size, sigma=None):
 
     if sigma:
         dem = ndimage.gaussian_filter(dem, sigma)
-    conv_fn = lambda a: ndimage.convolve(
-        a, kernel, mode="constant", cval=np.nan, origin=-1
-    )
+
+    conv_fn = lambda a: signal.convolve(a, kernel, mode="same")
 
     if isinstance(dem.data, da.Array):
         conv = da.map_overlap(conv_fn, dem.data, depth=size * 2, boundary="none")
