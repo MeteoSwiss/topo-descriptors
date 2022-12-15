@@ -8,6 +8,7 @@ from setuptools import setup, find_packages
 requirements = [
     "netcdf4",
     "numba",
+    "dask",
     "numpy",
     "pandas",
     "scipy",
