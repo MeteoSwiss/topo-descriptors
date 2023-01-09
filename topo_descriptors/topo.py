@@ -104,8 +104,8 @@ def tpi(dem, size, sigma=None):
 
     if isinstance(dem.data, da.Array):
         conv = da.map_overlap(conv_fn, dem.data, depth=size * 2, boundary="none")
-    elif isinstance(dem.data, np.ndarray):
-        conv = conv_fn(dem.values)
+    else:
+        conv = conv_fn(dem)
     return dem - conv / np.sum(kernel)
 
 
@@ -136,7 +136,7 @@ def circular_kernel(size):
     else:
         xx, yy = np.mgrid[:size, :size]
         circle = (xx - middle) ** 2 + (yy - middle) ** 2
-        kernel = np.asarray(circle <= (middle ** 2), dtype=np.float32)
+        kernel = np.asarray(circle <= (middle**2), dtype=np.float32)
 
     return kernel
 
@@ -228,7 +228,7 @@ def std(dem, size, sigma=None):
     sum_dem = signal.convolve(dem, kernel, mode="same")
     sum_squared_dem = signal.convolve(squared_dem, kernel, mode="same")
 
-    variance = (sum_squared_dem - sum_dem ** 2 / kernel_sum) / (kernel_sum - 1)
+    variance = (sum_squared_dem - sum_dem**2 / kernel_sum) / (kernel_sum - 1)
     variance = np.clip(variance, 0, None)  # avoid small negative values
 
     return np.sqrt(variance)
@@ -585,7 +585,7 @@ def gradient(dem, sigma, res_meters, sig_ratio=1):
 
     _normalize_dxy(dx, dy, res_meters)
 
-    slope = np.sqrt(dx ** 2, dy ** 2)
+    slope = np.sqrt(dx**2, dy**2)
     aspect = (
         180 + np.degrees(np.arctan2(dx, dy))
     ) % 360  # north faces = 0°, east faces = 90°
@@ -909,7 +909,7 @@ def _sx_rolling(dem, distance, blines, height):
 def _sx_name(radius, azimuth):
     """Return name for the array in output of the Sx function"""
 
-    add = f"_RADIUS{int(radius[0])}-{int(radius)}_AZIMUTH{int(azimuth)}"
+    add = f"_RADIUS{int(radius)}_AZIMUTH{int(azimuth)}"
     return f"SX{add}"
 
 

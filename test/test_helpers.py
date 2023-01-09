@@ -2,6 +2,7 @@ import numpy as np
 
 import topo_descriptors.helpers as hlp
 
+
 def test_round_up_to_odd():
     inputs = np.arange(0.1, 10, 0.7)
     outputs = hlp.round_up_to_odd(inputs)

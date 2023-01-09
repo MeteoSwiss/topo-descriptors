@@ -47,7 +47,9 @@ if __name__ == "__main__":
     )
 
     # TPI with prior smoothing
-    tp.compute_tpi(dem_da, scales_meters, smth_factors=1, ind_nans=ind_nans, crop=domain)
+    tp.compute_tpi(
+        dem_da, scales_meters, smth_factors=1, ind_nans=ind_nans, crop=domain
+    )
 
     # Gradients with symmetric kernels
     tp.compute_gradient(
