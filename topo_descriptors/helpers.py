@@ -63,6 +63,7 @@ def to_netcdf(array, coords, name, crop=None, outdir="."):
     da = xr.DataArray(array, coords=coords, name=name).sel(crop)
     filename = f"topo_{name}.nc"
     da.to_dataset().to_netcdf(outdir / filename)
+    logger.info(f"saved: {outdir / filename}")
 
 
 def scale_to_pixel(scales, dem_da):
@@ -90,7 +91,7 @@ def scale_to_pixel(scales, dem_da):
     x_coords, y_coords = dem_da["x"].values, dem_da["y"].values
     epsg_code = dem_da.attrs["crs"].lower()
     if "epsg:4326" in epsg_code:
-        logger.warning(
+        logger.debug(
             f"Reprojecting coordinates from WGS84 to UTM to obtain units of meters"
         )
         x_coords, y_coords = np.meshgrid(x_coords, y_coords)
@@ -101,6 +102,7 @@ def scale_to_pixel(scales, dem_da):
     x_res = np.gradient(x_coords, axis=n_dims - 1)
     y_res = np.gradient(y_coords, axis=0)
     mean_res = np.mean(np.abs([x_res.mean(), y_res.mean()]))
+    logger.debug(f"Estimated resolution: {mean_res:.0f} meters.")
 
     return round_up_to_odd(np.array(scales) / mean_res), {"x": x_res, "y": y_res}
 
