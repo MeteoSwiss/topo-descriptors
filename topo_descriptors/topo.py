@@ -799,7 +799,7 @@ def sx(
     # indices of pixels that lie at distance radius in direction azimuth
     window_center = np.floor(np.array(window_distance.shape) / 2)
     source_delta = _sx_source_idx_delta(azimuths, radius, dx, dy)
-    source = (window_center + source_delta).astype(np.int)
+    source = (window_center + source_delta).astype(int)
 
     # indices of all pixels between source pixels and target (center)
     lines_indices = _sx_bresenhamlines(source, window_center)
