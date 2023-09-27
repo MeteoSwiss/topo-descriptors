@@ -22,7 +22,7 @@ def compute_dem(dem_da, scales, ind_nans=[], crop=None, outdir="."):
     ----------
     dem_da : xarray DataArray representing the DEM and its grid coordinates.
     scales : scalar or list of scalars
-        Scale(s) in meters on which we want to compute the TPI.
+        Scale(s) in meters on which we want to compute the DEM.
         Corresponds to the diameter of the kernel used to compute it.
     ind_nans (optional) : tuple of two 1D arrays
         Contains the (row, column) indices of the NaNs in the original DEM to be
