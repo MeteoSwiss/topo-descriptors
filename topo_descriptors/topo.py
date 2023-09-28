@@ -14,6 +14,78 @@ from topo_descriptors import CFG
 logger = logging.getLogger(__name__)
 
 
+def compute_dem(dem_da, scales, ind_nans=[], crop=None, outdir="."):
+    """Wrapper to 'dem' function to launch computations for all scales and save
+    outputs as netCDF files.
+
+    Parameters
+    ----------
+    dem_da : xarray DataArray representing the DEM and its grid coordinates.
+    scales : scalar or list of scalars
+        Scale(s) in meters on which we want to compute the DEM.
+        Corresponds to the diameter of the kernel used to compute it.
+    ind_nans (optional) : tuple of two 1D arrays
+        Contains the (row, column) indices of the NaNs in the original DEM to be
+        reassigned after computations. NaNs in the original DEM should be
+        interpolated prior computations as they propagate in convolutions with
+        the fast Fourier transform method (scipy.signal.convolve).
+    crop (optional) : dict
+        If specified the outputs are cropped to the given extend. Keys should be
+        the coordinates labels of dem_da and values should be slices of [min,max]
+        extend. Default is None.
+    outdir (optional) : string
+        The path to the output directory. Save to working directory by default.
+
+    See also
+    --------
+    dem
+    """
+
+    hlp.check_dem(dem_da)
+    logger.info(f"***Starting dem computation for scales {scales} meters***")
+    if not hasattr(scales, "__iter__"):
+        scales = [scales]
+
+    scales_pxl, res_meters = hlp.scale_to_pixel(scales, dem_da)
+    sigmas = scales_pxl / CFG.scale_std
+
+    for idx, sigma in enumerate(sigmas):
+        logger.info(f"Computing scale {scales[idx]} meters")
+        name = _dem_name(scales[idx])
+        array = dem(dem=dem_da.values, sigma=sigma)
+
+        array[ind_nans] = np.nan
+        hlp.to_netcdf(array, dem_da.coords, name, crop, outdir)
+
+        del array
+
+
+def dem(dem, sigma):
+    """Smoothen digital elevation model with a standard deviation of sigma
+
+    Parameters
+    ----------
+    dem : array representing the DEM.
+    sigma (optional) : scalar
+        If provided, the DEM is first smoothed with a gaussian filter of standard
+        deviation sigma (in pixel size).
+
+    Returns
+    -------
+    array with smoothed dem
+
+    See also
+    --------
+    scipy.ndimage.gaussian_filter
+    """
+    return ndimage.gaussian_filter(dem, sigma)
+
+
+def _dem_name(scale):
+    """Return names for the arrays in output of the dem function"""
+    return f"DEM_{scale}M"
+
+
 def compute_tpi(dem_da, scales, smth_factors=None, ind_nans=[], crop=None, outdir="."):
     """Wrapper to 'tpi' function to launch computations for all scales and save
     outputs as netCDF files.
@@ -799,7 +871,7 @@ def sx(
     # indices of pixels that lie at distance radius in direction azimuth
     window_center = np.floor(np.array(window_distance.shape) / 2)
     source_delta = _sx_source_idx_delta(azimuths, radius, dx, dy)
-    source = (window_center + source_delta).astype(np.int)
+    source = (window_center + source_delta).astype(int)
 
     # indices of all pixels between source pixels and target (center)
     lines_indices = _sx_bresenhamlines(source, window_center)
