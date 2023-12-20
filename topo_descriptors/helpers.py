@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_dem_netcdf(path_dem):
-    """Load the DEM into a xarray DataArray and filter NaNs
+    """Load the DEM into a xarray Dataset and filter NaNs
 
     Parameters
     ----------
@@ -24,30 +24,22 @@ def get_dem_netcdf(path_dem):
 
     Returns
     -------
-    xarray DataArray with the DEM values.
+    xarray Dataset with the DEM values.
     """
 
-    dem_ds = xr.open_dataset(path_dem, decode_times=False)
-    dem_da = (
-        dem_ds.to_array()
-        .isel(variable=0, drop=True)
-        .reset_coords(drop=True)
-        .astype(np.float32)
-    )
-
-    return dem_da.where(dem_da > CFG.min_elevation)
+    dem_ds = xr.open_dataset(path_dem).astype(np.float32).squeeze(drop=True)
+    return dem_ds.where(dem_ds > CFG.min_elevation)
 
 
-def to_netcdf(array, coords, name, crop=None, outdir="."):
-    """Save an array of topographic descriptors in NetCDF. It is first converted
-    into a xarray DataArray with the same coordinates as the input DEM DataArray
-    and a specified name.
+def to_netcdf(array, dem_ds, name, crop=None, outdir="."):
+    """Save an array of topographic descriptors in NetCDF. It has the same coordinates
+    and attributes as the input DEM and a specified name.
 
     Parameters
     ----------
     array : array to be saved as netCDF
-    coords : dict
-        Coordinates for the array (i.e. those of the DEM).
+    dem_ds : xarray Dataset
+        Original DEM dataset from which coordinates and attributes are copied.
     name : string
         Name for the array
     crop (optional) : dict
@@ -60,13 +52,13 @@ def to_netcdf(array, coords, name, crop=None, outdir="."):
 
     name = str.upper(name)
     outdir = Path(outdir)
-    da = xr.DataArray(array, coords=coords, name=name).sel(crop)
+    ds = xr.Dataset({name: (get_da(dem_ds).dims, array)}, coords=dem_ds.coords).sel(crop)
     filename = f"topo_{name}.nc"
-    da.to_dataset().to_netcdf(outdir / filename)
+    ds.to_netcdf(outdir / filename)
     logger.info(f"saved: {outdir / filename}")
 
 
-def scale_to_pixel(scales, dem_da):
+def scale_to_pixel(scales, dem_ds):
     """Convert distances in meters to the closest odd number of pixels based on
     the DEM resolution.
 
@@ -75,10 +67,9 @@ def scale_to_pixel(scales, dem_da):
     scales : list of scalars
         Scales in meters on which we want to compute the topographic descriptor.
         Corresponds to the size of the squared kernel used to compute it.
-    dem_da : xarray DataArray representing the DEM and its grid coordinates.
-    Coordinates must be projected and named 'x', 'y'; or in WGS84 and named
-    'lon', 'lat'. In the latter case, they are reprojected to UTM to derive the
-    average resolution in meters.
+    dem_ds : xarray Dataset representing the DEM and its grid coordinates.
+    Coordinates must be projected or in WGS84 and named 'x', 'y'. In the latter case,
+    they are reprojected to UTM to derive the average resolution in meters.
 
     Returns
     -------
@@ -87,12 +78,12 @@ def scale_to_pixel(scales, dem_da):
     dict with two 1-D or 2-D arrays :
         Resolution in meters of each DEM grid points in the x and y directions.
     """
-    check_dem(dem_da)
-    x_coords, y_coords = dem_da["x"].values, dem_da["y"].values
-    epsg_code = dem_da.attrs["crs"].lower()
+    check_dem(dem_ds)
+    x_coords, y_coords = dem_ds["x"].values, dem_ds["y"].values
+    epsg_code = dem_ds.attrs["crs"].lower()
     if "epsg:4326" in epsg_code:
         logger.debug(
-            f"Reprojecting coordinates from WGS84 to UTM to obtain units of meters"
+            "Reprojecting coordinates from WGS84 to UTM to obtain units of meters"
         )
         x_coords, y_coords = np.meshgrid(x_coords, y_coords)
         x_coords, y_coords, _, _ = utm.from_latlon(y_coords, x_coords)
@@ -136,23 +127,23 @@ def get_sigmas(smth_factors, scales_pxl):
     return [None if np.isnan(sigma) else sigma for sigma in sigmas]
 
 
-def fill_na(dem_da):
+def fill_na(dem_ds):
     """get indices of NaNs and interpolates them.
 
     Parameters
     ----------
-    dem_da : xarray DataArray containing the elevation data.
+    dem_ds : xarray Dataset containing the elevation data.
 
     Returns
     -------
     ind_nans : tuple of two 1D arrays
         Contains the row / column indices of the NaNs in the original dem.
-    Xarray DataArray with interpolated NaNs in x direction using "nearest" method.
+    Xarray Dataset with interpolated NaNs in x direction using "nearest" method.
     """
 
-    ind_nans = np.where(np.isnan(dem_da))
-    return ind_nans, dem_da.interpolate_na(
-        dim=dem_da.dims[1], method="nearest", fill_value="extrapolate"
+    ind_nans = np.where(np.isnan(get_da(dem_ds)))
+    return ind_nans, dem_ds.interpolate_na(
+        dim="x", method="nearest", fill_value="extrapolate"
     )
 
 
@@ -173,16 +164,14 @@ def timer(func):
 def check_dem(dem):
     """
     Check that the input dem conforms to the data model, namely:
-      - instance of xarray.DataArray
+      - instance of xarray.Dataset
       - 2D field
       - y and x dimensions
       - crs attribute specifying an EPSG code.
     """
-    if not isinstance(dem, xr.DataArray):
-        raise ValueError("dem must be a xr.DataArray")
-    if dem.ndim != 2:
-        raise ValueError("dem must be a two-dimensional array")
-    if dem.dims != ("y", "x"):
+    if not isinstance(dem, xr.Dataset):
+        raise ValueError("dem must be a xr.Dataset")
+    if dem[list(dem)[0]].dims != ("y", "x"):
         raise ValueError("dem dimensions must be ('y', 'x')")
     if not "crs" in dem.attrs:
         raise KeyError("missing 'crs' (case sensitive) attribute in dem")
@@ -190,3 +179,11 @@ def check_dem(dem):
         raise ValueError(
             "missing 'epsg:' (case insensitive) key in the 'crs' attribute"
         )
+
+
+def get_da(dem_ds):
+    """
+    Return the xarray.DataArray with DEM values without knowing its name.
+    """
+
+    return dem_ds[list(dem_ds)[0]]
