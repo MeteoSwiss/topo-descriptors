@@ -48,13 +48,13 @@ def compute_dem(dem_ds, scales, ind_nans=[], crop=None, outdir="."):
 
     scales_pxl, res_meters = hlp.scale_to_pixel(scales, dem_ds)
     sigmas = scales_pxl / CFG.scale_std
-    dem = hlp.get_da(dem_ds).values
+    dem_val = hlp.get_da(dem_ds).values
     units = "m"
 
     for idx, sigma in enumerate(sigmas):
         logger.info(f"Computing scale {scales[idx]} meters")
         name = _dem_name(scales[idx])
-        array = dem(dem=dem, sigma=sigma)
+        array = dem(dem_val, sigma)
         array[ind_nans] = np.nan
         hlp.to_netcdf(array, dem_ds, name, crop, outdir, units)
         del array
@@ -127,7 +127,7 @@ def compute_tpi(dem_ds, scales, smth_factors=None, ind_nans=[], crop=None, outdi
 
     scales_pxl, _ = hlp.scale_to_pixel(scales, dem_ds)
     sigmas = hlp.get_sigmas(smth_factors, scales_pxl)
-    dem = hlp.get_da(dem_ds).values
+    dem_val = hlp.get_da(dem_ds).values
     units = "m"
 
     for idx, scale_pxl in enumerate(scales_pxl):
@@ -136,7 +136,7 @@ def compute_tpi(dem_ds, scales, smth_factors=None, ind_nans=[], crop=None, outdi
             f" {smth_factors[idx]} ..."
         )
         name = _tpi_name(scales[idx], smth_factors[idx])
-        array = tpi(dem=dem, size=scale_pxl, sigma=sigmas[idx])
+        array = tpi(dem_val, scale_pxl, sigma=sigmas[idx])
         array[ind_nans] = np.nan
         hlp.to_netcdf(array, dem_ds, name, crop, outdir, units)
         del array
@@ -255,7 +255,7 @@ def compute_std(dem_ds, scales, smth_factors=None, ind_nans=[], crop=None, outdi
 
     scales_pxl, _ = hlp.scale_to_pixel(scales, dem_ds)
     sigmas = hlp.get_sigmas(smth_factors, scales_pxl)
-    dem = hlp.get_da(dem_ds).values
+    dem_val = hlp.get_da(dem_ds).values
     units = "m"
 
     for idx, scale_pxl in enumerate(scales_pxl):
@@ -264,7 +264,7 @@ def compute_std(dem_ds, scales, smth_factors=None, ind_nans=[], crop=None, outdi
             f" {smth_factors[idx]} ..."
         )
         name = _std_name(scales[idx], smth_factors[idx])
-        array = std(dem=dem, size=scale_pxl, sigma=sigmas[idx])
+        array = std(dem_val, scale_pxl, sigma=sigmas[idx])
         array[ind_nans] = np.nan
         hlp.to_netcdf(array, dem_ds, name, crop, outdir, units)
         del array
@@ -596,7 +596,7 @@ def compute_gradient(dem_ds, scales, sig_ratios=1, ind_nans=[], crop=None, outdi
 
     scales_pxl, res_meters = hlp.scale_to_pixel(scales, dem_ds)
     sigmas = scales_pxl / CFG.scale_std
-    dem = hlp.get_da(dem_ds).values
+    dem_val = hlp.get_da(dem_ds).values
     all_units = ["1", "1", "degree", "degree"]
 
     for idx, sigma in enumerate(sigmas):
@@ -606,9 +606,9 @@ def compute_gradient(dem_ds, scales, sig_ratios=1, ind_nans=[], crop=None, outdi
         )
         names = _gradient_names(scales[idx], sig_ratios[idx])
         arrays = gradient(
-            dem=dem,
-            sigma=sigma,
-            res_meters=res_meters,
+            dem_val,
+            sigma,
+            res_meters,
             sig_ratio=sig_ratios[idx],
         )
 
@@ -847,7 +847,7 @@ def sx(
     _sx_distance, _sx_source_idx_delta, _sx_bresenhamlines, _sx_rolling
     """
 
-    if not isinstance(dem_ds, xr.DataArray):
+    if not isinstance(dem_ds, xr.Dataset):
         raise TypeError("Argument 'dem_ds' must be a xr.Dataset.")
 
     if azimuth_arc == 0:

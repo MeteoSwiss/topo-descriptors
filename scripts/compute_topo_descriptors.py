@@ -10,7 +10,6 @@ import topo_descriptors.helpers as hlp
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
-
     logging.basicConfig(level=logging.INFO)
     logging.captureWarnings(True)
 
@@ -40,6 +39,9 @@ if __name__ == "__main__":
 
     # Launch computations and save output
 
+    # smoothed DEM
+    tp.compute_dem(dem_ds, scales_meters, ind_nans=ind_nans, crop=domain)
+
     # raw TPI
     tp.compute_tpi(
         dem_ds, scales_meters, smth_factors=None, ind_nans=ind_nans, crop=domain
@@ -54,6 +56,9 @@ if __name__ == "__main__":
     tp.compute_gradient(
         dem_ds, scales_meters, sig_ratios=1, ind_nans=ind_nans, crop=domain
     )
+
+    # Standard deviation of surface
+    tp.compute_std(dem_ds, scales_meters, ind_nans=ind_nans, crop=domain)
 
     # Valley Index with prior smoothing
     tp.compute_valley_ridge(
@@ -74,5 +79,13 @@ if __name__ == "__main__":
         flat_list=[0, 0.15, 0.3],
         smth_factors=0.5,
         ind_nans=ind_nans,
+        crop=domain,
+    )
+
+    # Sx for one azimuth
+    tp.compute_sx(
+        dem_ds,
+        0,
+        1000,
         crop=domain,
     )
