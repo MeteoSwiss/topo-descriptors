@@ -54,7 +54,9 @@ def to_netcdf(array, dem_ds, name, crop=None, outdir=".", units=None):
 
     name = str.upper(name)
     outdir = Path(outdir)
-    ds = xr.Dataset({name: (get_da(dem_ds).dims, array)}, coords=dem_ds.coords, attrs=dem_ds.attrs).sel(crop)
+    ds = xr.Dataset(
+        {name: (get_da(dem_ds).dims, array)}, coords=dem_ds.coords, attrs=dem_ds.attrs
+    ).sel(crop)
     if units is not None:
         ds[name].attrs.update(units=units)
 

@@ -464,7 +464,6 @@ def valley_ridge(dem, size, mode, flat_list=[0, 0.15, 0.3], sigma=None):
         kernels = _valley_kernels(size, flat_list)
 
     for angle in angles:  # 0° = E-W valleys, 90° = S-N valleys
-
         kernels_rot = _rotate_kernels(kernels, angle)
         conv = signal.convolve(dem, kernels_rot, mode="same")
         conv = np.max(conv, axis=0)
@@ -662,7 +661,7 @@ def gradient(dem, sigma, res_meters, sig_ratio=1):
 
     _normalize_dxy(dx, dy, res_meters)
 
-    slope = np.arctan(np.sqrt(dx**2 + dy**2)) * (180 / np.pi) # in degrees
+    slope = np.arctan(np.sqrt(dx**2 + dy**2)) * (180 / np.pi)  # in degrees
     aspect = (
         180 + np.degrees(np.arctan2(dx, dy))
     ) % 360  # north faces = 0°, east faces = 90°
@@ -965,7 +964,6 @@ def _sx_rolling(dem, distance, blines, height):
     sx = np.zeros_like(dem)
     for j in prange(window, ny - window):
         for i in prange(window, nx - window):
-
             j_blines = j + blines_centered[:, 0]
             i_blines = i + blines_centered[:, 1]
             dem_blines = np.array([dem[j, i] for j, i in list(zip(j_blines, i_blines))])
