@@ -49,15 +49,14 @@ def compute_dem(dem_ds, scales, ind_nans=[], crop=None, outdir="."):
     scales_pxl, res_meters = hlp.scale_to_pixel(scales, dem_ds)
     sigmas = scales_pxl / CFG.scale_std
     dem = hlp.get_da(dem_ds).values
+    units = "m"
 
     for idx, sigma in enumerate(sigmas):
         logger.info(f"Computing scale {scales[idx]} meters")
         name = _dem_name(scales[idx])
         array = dem(dem=dem, sigma=sigma)
-
         array[ind_nans] = np.nan
-        hlp.to_netcdf(array, dem_ds, name, crop, outdir)
-
+        hlp.to_netcdf(array, dem_ds, name, crop, outdir, units)
         del array
 
 
@@ -129,6 +128,7 @@ def compute_tpi(dem_ds, scales, smth_factors=None, ind_nans=[], crop=None, outdi
     scales_pxl, _ = hlp.scale_to_pixel(scales, dem_ds)
     sigmas = hlp.get_sigmas(smth_factors, scales_pxl)
     dem = hlp.get_da(dem_ds).values
+    units = "m"
 
     for idx, scale_pxl in enumerate(scales_pxl):
         logger.info(
@@ -137,9 +137,8 @@ def compute_tpi(dem_ds, scales, smth_factors=None, ind_nans=[], crop=None, outdi
         )
         name = _tpi_name(scales[idx], smth_factors[idx])
         array = tpi(dem=dem, size=scale_pxl, sigma=sigmas[idx])
-
         array[ind_nans] = np.nan
-        hlp.to_netcdf(array, dem_ds, name, crop, outdir)
+        hlp.to_netcdf(array, dem_ds, name, crop, outdir, units)
         del array
 
 
@@ -257,6 +256,7 @@ def compute_std(dem_ds, scales, smth_factors=None, ind_nans=[], crop=None, outdi
     scales_pxl, _ = hlp.scale_to_pixel(scales, dem_ds)
     sigmas = hlp.get_sigmas(smth_factors, scales_pxl)
     dem = hlp.get_da(dem_ds).values
+    units = "m"
 
     for idx, scale_pxl in enumerate(scales_pxl):
         logger.info(
@@ -265,9 +265,8 @@ def compute_std(dem_ds, scales, smth_factors=None, ind_nans=[], crop=None, outdi
         )
         name = _std_name(scales[idx], smth_factors[idx])
         array = std(dem=dem, size=scale_pxl, sigma=sigmas[idx])
-
         array[ind_nans] = np.nan
-        hlp.to_netcdf(array, dem_ds, name, crop, outdir)
+        hlp.to_netcdf(array, dem_ds, name, crop, outdir, units)
         del array
 
 
@@ -406,9 +405,10 @@ def _valley_ridge_wrap(
     of the different scales"""
 
     arrays = valley_ridge(hlp.get_da(dem_ds).values, size, mode, flat_list, sigma)
+    units = "1"
     for array, name in zip(arrays, names):
         array[ind_nans] = np.nan
-        hlp.to_netcdf(array, dem_ds, name, crop, outdir)
+        hlp.to_netcdf(array, dem_ds, name, crop, outdir, units)
 
 
 @hlp.timer
@@ -598,6 +598,7 @@ def compute_gradient(dem_ds, scales, sig_ratios=1, ind_nans=[], crop=None, outdi
     scales_pxl, res_meters = hlp.scale_to_pixel(scales, dem_ds)
     sigmas = scales_pxl / CFG.scale_std
     dem = hlp.get_da(dem_ds).values
+    all_units = ["1", "1", "degree", "degree"]
 
     for idx, sigma in enumerate(sigmas):
         logger.info(
@@ -612,9 +613,9 @@ def compute_gradient(dem_ds, scales, sig_ratios=1, ind_nans=[], crop=None, outdi
             sig_ratio=sig_ratios[idx],
         )
 
-        for array, name in zip(arrays, names):
+        for array, name, units in zip(arrays, names, all_units):
             array[ind_nans] = np.nan
-            hlp.to_netcdf(array, dem_ds, name, crop, outdir)
+            hlp.to_netcdf(array, dem_ds, name, crop, outdir, units)
 
         del arrays
 
@@ -792,9 +793,9 @@ def compute_sx(
         radius_min=radius_min,
     )
 
+    units = "degree"
     name = _sx_name(radius, azimuth)
-    name = str.upper(name)
-    hlp.to_netcdf(array, dem_ds, name, crop, outdir)
+    hlp.to_netcdf(array, dem_ds, name, crop, outdir, units)
 
 
 @hlp.timer
@@ -984,6 +985,3 @@ def _sx_name(radius, azimuth):
 
     add = f"_RADIUS{int(radius)}_AZIMUTH{int(azimuth)}"
     return f"SX{add}"
-
-
-# TODO: Relief

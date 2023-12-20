@@ -31,7 +31,7 @@ def get_dem_netcdf(path_dem):
     return dem_ds.where(dem_ds > CFG.min_elevation)
 
 
-def to_netcdf(array, dem_ds, name, crop=None, outdir="."):
+def to_netcdf(array, dem_ds, name, crop=None, outdir=".", units=None):
     """Save an array of topographic descriptors in NetCDF. It has the same coordinates
     and attributes as the input DEM and a specified name.
 
@@ -48,11 +48,16 @@ def to_netcdf(array, dem_ds, name, crop=None, outdir="."):
         extend. Default is None.
     outdir (optional) : string
         The path to the output directory. Save to working directory by default.
+    units (optional) : string
+        Units of the topographic descriptor array added as variable attribute.
     """
 
     name = str.upper(name)
     outdir = Path(outdir)
-    ds = xr.Dataset({name: (get_da(dem_ds).dims, array)}, coords=dem_ds.coords).sel(crop)
+    ds = xr.Dataset({name: (get_da(dem_ds).dims, array)}, coords=dem_ds.coords, attrs=dem_ds.attrs).sel(crop)
+    if units is not None:
+        ds[name].attrs.update(units=units)
+
     filename = f"topo_{name}.nc"
     ds.to_netcdf(outdir / filename)
     logger.info(f"saved: {outdir / filename}")
