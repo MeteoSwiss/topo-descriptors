@@ -2,6 +2,14 @@
 History
 =======
 
+0.3.0 (2023-12-20)
+------------------
+
+* Move from DataArray to Dataset for DEM object to allow transferring global attributes.
+* Add units as variable attributes.
+* Output slope in units of [degree] instead of [m / pixel].
+* Fix bug in slope calculation.
+
 0.2.1 (2022-10-19)
 ------------------
 

@@ -24,11 +24,19 @@ DEM around the Basodino region in southern Switzerland, around 46.4N 8.5E:
 !eio clip -o Basodino-30m-DEM.tif --bounds 8.2 46.30 8.6 46.55
 ```
 
-    make: Nothing to be done for `download'.
-    make: Nothing to be done for `all'.
-    cp SRTM1.vrt SRTM1.0e5622d0845a4ad9a0f3e44ad90db19d.vrt
-    gdal_translate -q -co TILED=YES -co COMPRESS=DEFLATE -co ZLEVEL=9 -co PREDICTOR=2 -projwin 8.2 46.55 8.6 46.3 SRTM1.0e5622d0845a4ad9a0f3e44ad90db19d.vrt /Users/daniele/src/topo-descriptors/Basodino-30m-DEM.tif
-    rm -f SRTM1.0e5622d0845a4ad9a0f3e44ad90db19d.vrt
+    make: Entering directory '/prod/gve/home/mts/.cache/elevation/SRTM1'
+    make: Nothing to be done for 'download'.
+    make: Leaving directory '/prod/gve/home/mts/.cache/elevation/SRTM1'
+    make: Entering directory '/prod/gve/home/mts/.cache/elevation/SRTM1'
+    make: Nothing to be done for 'all'.
+    make: Leaving directory '/prod/gve/home/mts/.cache/elevation/SRTM1'
+    make: Entering directory '/prod/gve/home/mts/.cache/elevation/SRTM1'
+    cp SRTM1.vrt SRTM1.d73260d0233a450ab8ca8ce05b9b46c6.vrt
+    make: Leaving directory '/prod/gve/home/mts/.cache/elevation/SRTM1'
+    make: Entering directory '/prod/gve/home/mts/.cache/elevation/SRTM1'
+    gdal_translate -q -co TILED=YES -co COMPRESS=DEFLATE -co ZLEVEL=9 -co PREDICTOR=2 -projwin 8.2 46.55 8.6 46.3 SRTM1.d73260d0233a450ab8ca8ce05b9b46c6.vrt /prod/gve/home/mts/git/topo-descriptors/Basodino-30m-DEM.tif
+    rm -f SRTM1.d73260d0233a450ab8ca8ce05b9b46c6.vrt
+    make: Leaving directory '/prod/gve/home/mts/.cache/elevation/SRTM1'
 
 
 
@@ -43,26 +51,27 @@ logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 ```
 
-Now in python we can use the xarray interface to rasterio to easily import the
+Now in python we can easily import the
 `Basodino-30m-DEM.tif` file generated above:
 
 
 ```python
-import xarray as xr
+from topo_descriptors.helpers import get_dem_netcdf, scale_to_pixel
 
-dem = xr.open_rasterio("Basodino-30m-DEM.tif")
-dem = dem.isel(band=0, drop=True)
-dem.plot(robust=True)
+dem_ds = get_dem_netcdf("Basodino-30m-DEM.tif")
+varname = list(dem_ds)[0]
+dem_ds.attrs.update(crs="epsg:4326")
+dem_ds[varname].plot(robust=True)
 ```
 
-    /var/folders/v1/d7jjg8d52fl77y27qbv75bw80000gp/T/ipykernel_9632/102662558.py:3: DeprecationWarning: open_rasterio is Deprecated in favor of rioxarray. For information about transitioning, see: https://corteva.github.io/rioxarray/stable/getting_started/getting_started.html
-      dem = xr.open_rasterio("Basodino-30m-DEM.tif")
+    2023-12-20 17:53:55,120 yaconfigobject INFO     Loading /prod/gve/home/mts/git/topo-descriptors/topo_descriptors/config/topo_descriptors.conf.
+    2023-12-20 17:53:55,121 yaconfigobject INFO     Loading configuration file: /prod/gve/home/mts/git/topo-descriptors/topo_descriptors/config/topo_descriptors.conf
 
 
 
 
 
-    <matplotlib.collections.QuadMesh at 0x14776c280>
+    <matplotlib.collections.QuadMesh at 0x7f060ab21fd0>
 
 
 
@@ -74,22 +83,20 @@ dem.plot(robust=True)
 
 
 ```python
-from topo_descriptors import topo, helpers
+from topo_descriptors import topo
 
 scale_meters = 500
-scale_pixel, __ = helpers.scale_to_pixel(scale_meters, dem)
-topo.tpi(dem, scale_pixel).plot(vmin=-100, vmax=100, cmap="bwr")
+scale_pixel, __ = scale_to_pixel(scale_meters, dem_ds)
+topo.tpi(dem_ds[varname], scale_pixel).plot(vmin=-100, vmax=100, cmap="bwr")
 ```
 
-    2023-01-09 19:11:08,498 yaconfigobject INFO     Loading /Users/daniele/src/topo-descriptors/topo_descriptors/config/topo_descriptors.conf.
-    2023-01-09 19:11:08,498 yaconfigobject INFO     Loading configuration file: /Users/daniele/src/topo-descriptors/topo_descriptors/config/topo_descriptors.conf
-    2023-01-09 19:11:09,032 topo_descriptors.helpers INFO     Computed in 0:00:00 (HH:mm:ss)
+    2023-12-20 17:53:58,736 topo_descriptors.helpers INFO     Computed in 0:00:00 (HH:mm:ss)
 
 
 
 
 
-    <matplotlib.collections.QuadMesh at 0x28eb63280>
+    <matplotlib.collections.QuadMesh at 0x7f0601529750>
 
 
 
@@ -105,18 +112,19 @@ and a radius of 500 meters.
 
 
 ```python
-sx_500m = topo.sx(dem, azimuth=0, radius=500)
-xr.DataArray(sx_500m, coords=dem.coords).plot.imshow()
+import xarray as xr
+
+sx_500m = topo.sx(dem_ds, azimuth=0, radius=500)
+xr.DataArray(sx_500m, coords=dem_ds.coords).plot.imshow()
 ```
 
-    OMP: Info #276: omp_set_nested routine deprecated, please use omp_set_max_active_levels instead.
-    2023-01-09 19:11:13,162 topo_descriptors.helpers INFO     Computed in 0:00:03 (HH:mm:ss)
+    2023-12-20 17:54:06,246 topo_descriptors.helpers INFO     Computed in 0:00:06 (HH:mm:ss)
 
 
 
 
 
-    <matplotlib.image.AxesImage at 0x2a76fb550>
+    <matplotlib.image.AxesImage at 0x7f05f15b8610>
 
 
 
@@ -140,46 +148,46 @@ output_dir.mkdir(exist_ok=True)
 scales_meters = [200, 2000]
 domain = {"x": slice(8.25, 8.55), "y": slice(46.50, 46.35)}
 
-topo.compute_gradient(dem, scales_meters, sig_ratios=1, crop=domain, outdir=output_dir)
-topo.compute_std(dem, scales_meters, crop=domain, outdir=output_dir)
-topo.compute_tpi(dem, scales_meters, crop=domain, outdir=output_dir)
-topo.compute_sx(dem, azimuth=0, radius=scales_meters[0], crop=domain, outdir=output_dir)
-topo.compute_sx(dem, azimuth=0, radius=scales_meters[1], crop=domain, outdir=output_dir)
+topo.compute_gradient(dem_ds, scales_meters, sig_ratios=1, crop=domain, outdir=output_dir)
+topo.compute_std(dem_ds, scales_meters, crop=domain, outdir=output_dir)
+topo.compute_tpi(dem_ds, scales_meters, crop=domain, outdir=output_dir)
+topo.compute_sx(dem_ds, azimuth=0, radius=scales_meters[0], crop=domain, outdir=output_dir)
+topo.compute_sx(dem_ds, azimuth=0, radius=scales_meters[1], crop=domain, outdir=output_dir)
 ```
 
-    2023-01-09 19:11:13,301 topo_descriptors.topo INFO     ***Starting gradients computation for scales [200, 2000] meters***
-    2023-01-09 19:11:13,432 topo_descriptors.topo INFO     Computing scale 200 meters with sigma ratio 1 ...
-    2023-01-09 19:11:13,476 topo_descriptors.helpers INFO     Computed in 0:00:00 (HH:mm:ss)
-    2023-01-09 19:11:13,487 topo_descriptors.helpers INFO     saved: out/topo_WE_DERIVATIVE_200M_SIGRATIO1.nc
-    2023-01-09 19:11:13,491 topo_descriptors.helpers INFO     saved: out/topo_SN_DERIVATIVE_200M_SIGRATIO1.nc
-    2023-01-09 19:11:13,495 topo_descriptors.helpers INFO     saved: out/topo_SLOPE_200M_SIGRATIO1.nc
-    2023-01-09 19:11:13,499 topo_descriptors.helpers INFO     saved: out/topo_ASPECT_200M_SIGRATIO1.nc
-    2023-01-09 19:11:13,499 topo_descriptors.topo INFO     Computing scale 2000 meters with sigma ratio 1 ...
-    2023-01-09 19:11:13,657 topo_descriptors.helpers INFO     Computed in 0:00:00 (HH:mm:ss)
-    2023-01-09 19:11:13,662 topo_descriptors.helpers INFO     saved: out/topo_WE_DERIVATIVE_2000M_SIGRATIO1.nc
-    2023-01-09 19:11:13,665 topo_descriptors.helpers INFO     saved: out/topo_SN_DERIVATIVE_2000M_SIGRATIO1.nc
-    2023-01-09 19:11:13,669 topo_descriptors.helpers INFO     saved: out/topo_SLOPE_2000M_SIGRATIO1.nc
-    2023-01-09 19:11:13,673 topo_descriptors.helpers INFO     saved: out/topo_ASPECT_2000M_SIGRATIO1.nc
-    2023-01-09 19:11:13,675 topo_descriptors.topo INFO     ***Starting STD computation for scales [200, 2000] meters***
-    2023-01-09 19:11:13,808 topo_descriptors.topo INFO     Computing scale 200 meters with smoothing factor None ...
-    2023-01-09 19:11:13,860 topo_descriptors.helpers INFO     Computed in 0:00:00 (HH:mm:ss)
-    2023-01-09 19:11:13,865 topo_descriptors.helpers INFO     saved: out/topo_STD_200M.nc
-    2023-01-09 19:11:13,865 topo_descriptors.topo INFO     Computing scale 2000 meters with smoothing factor None ...
-    2023-01-09 19:11:13,923 topo_descriptors.helpers INFO     Computed in 0:00:00 (HH:mm:ss)
-    2023-01-09 19:11:13,928 topo_descriptors.helpers INFO     saved: out/topo_STD_2000M.nc
-    2023-01-09 19:11:13,929 topo_descriptors.topo INFO     ***Starting TPI computation for scales [200, 2000] meters***
-    2023-01-09 19:11:14,061 topo_descriptors.topo INFO     Computing scale 200 meters with smoothing factor None ...
-    2023-01-09 19:11:14,086 topo_descriptors.helpers INFO     Computed in 0:00:00 (HH:mm:ss)
-    2023-01-09 19:11:14,090 topo_descriptors.helpers INFO     saved: out/topo_TPI_200M.nc
-    2023-01-09 19:11:14,090 topo_descriptors.topo INFO     Computing scale 2000 meters with smoothing factor None ...
-    2023-01-09 19:11:14,116 topo_descriptors.helpers INFO     Computed in 0:00:00 (HH:mm:ss)
-    2023-01-09 19:11:14,120 topo_descriptors.helpers INFO     saved: out/topo_TPI_2000M.nc
-    2023-01-09 19:11:14,121 topo_descriptors.topo INFO     ***Starting Sx computation for azimuth 0 meters and radius 200***
-    2023-01-09 19:11:16,259 topo_descriptors.helpers INFO     Computed in 0:00:02 (HH:mm:ss)
-    2023-01-09 19:11:16,263 topo_descriptors.helpers INFO     saved: out/topo_SX_RADIUS200_AZIMUTH0.nc
-    2023-01-09 19:11:16,263 topo_descriptors.topo INFO     ***Starting Sx computation for azimuth 0 meters and radius 2000***
-    2023-01-09 19:11:18,183 topo_descriptors.helpers INFO     Computed in 0:00:01 (HH:mm:ss)
-    2023-01-09 19:11:18,187 topo_descriptors.helpers INFO     saved: out/topo_SX_RADIUS2000_AZIMUTH0.nc
+    2023-12-20 17:54:06,586 topo_descriptors.topo INFO     ***Starting gradients computation for scales [200, 2000] meters***
+    2023-12-20 17:54:06,870 topo_descriptors.topo INFO     Computing scale 200 meters with sigma ratio 1 ...
+    2023-12-20 17:54:06,920 topo_descriptors.helpers INFO     Computed in 0:00:00 (HH:mm:ss)
+    2023-12-20 17:54:06,945 topo_descriptors.helpers INFO     saved: out/topo_WE_DERIVATIVE_200M_SIGRATIO1.nc
+    2023-12-20 17:54:06,958 topo_descriptors.helpers INFO     saved: out/topo_SN_DERIVATIVE_200M_SIGRATIO1.nc
+    2023-12-20 17:54:06,970 topo_descriptors.helpers INFO     saved: out/topo_SLOPE_200M_SIGRATIO1.nc
+    2023-12-20 17:54:06,982 topo_descriptors.helpers INFO     saved: out/topo_ASPECT_200M_SIGRATIO1.nc
+    2023-12-20 17:54:06,983 topo_descriptors.topo INFO     Computing scale 2000 meters with sigma ratio 1 ...
+    2023-12-20 17:54:07,229 topo_descriptors.helpers INFO     Computed in 0:00:00 (HH:mm:ss)
+    2023-12-20 17:54:07,242 topo_descriptors.helpers INFO     saved: out/topo_WE_DERIVATIVE_2000M_SIGRATIO1.nc
+    2023-12-20 17:54:07,260 topo_descriptors.helpers INFO     saved: out/topo_SN_DERIVATIVE_2000M_SIGRATIO1.nc
+    2023-12-20 17:54:07,272 topo_descriptors.helpers INFO     saved: out/topo_SLOPE_2000M_SIGRATIO1.nc
+    2023-12-20 17:54:07,284 topo_descriptors.helpers INFO     saved: out/topo_ASPECT_2000M_SIGRATIO1.nc
+    2023-12-20 17:54:07,286 topo_descriptors.topo INFO     ***Starting STD computation for scales [200, 2000] meters***
+    2023-12-20 17:54:07,569 topo_descriptors.topo INFO     Computing scale 200 meters with smoothing factor None ...
+    2023-12-20 17:54:07,696 topo_descriptors.helpers INFO     Computed in 0:00:00 (HH:mm:ss)
+    2023-12-20 17:54:07,717 topo_descriptors.helpers INFO     saved: out/topo_STD_200M.nc
+    2023-12-20 17:54:07,719 topo_descriptors.topo INFO     Computing scale 2000 meters with smoothing factor None ...
+    2023-12-20 17:54:07,853 topo_descriptors.helpers INFO     Computed in 0:00:00 (HH:mm:ss)
+    2023-12-20 17:54:07,871 topo_descriptors.helpers INFO     saved: out/topo_STD_2000M.nc
+    2023-12-20 17:54:07,873 topo_descriptors.topo INFO     ***Starting TPI computation for scales [200, 2000] meters***
+    2023-12-20 17:54:08,141 topo_descriptors.topo INFO     Computing scale 200 meters with smoothing factor None ...
+    2023-12-20 17:54:08,182 topo_descriptors.helpers INFO     Computed in 0:00:00 (HH:mm:ss)
+    2023-12-20 17:54:08,196 topo_descriptors.helpers INFO     saved: out/topo_TPI_200M.nc
+    2023-12-20 17:54:08,197 topo_descriptors.topo INFO     Computing scale 2000 meters with smoothing factor None ...
+    2023-12-20 17:54:08,235 topo_descriptors.helpers INFO     Computed in 0:00:00 (HH:mm:ss)
+    2023-12-20 17:54:08,255 topo_descriptors.helpers INFO     saved: out/topo_TPI_2000M.nc
+    2023-12-20 17:54:08,257 topo_descriptors.topo INFO     ***Starting Sx computation for azimuth 0 meters and radius 200***
+    2023-12-20 17:54:09,313 topo_descriptors.helpers INFO     Computed in 0:00:01 (HH:mm:ss)
+    2023-12-20 17:54:09,326 topo_descriptors.helpers INFO     saved: out/topo_SX_RADIUS200_AZIMUTH0.nc
+    2023-12-20 17:54:09,328 topo_descriptors.topo INFO     ***Starting Sx computation for azimuth 0 meters and radius 2000***
+    2023-12-20 17:54:15,750 topo_descriptors.helpers INFO     Computed in 0:00:06 (HH:mm:ss)
+    2023-12-20 17:54:15,764 topo_descriptors.helpers INFO     saved: out/topo_SX_RADIUS2000_AZIMUTH0.nc
 
 
 Above, the output was written directly to disk, while in the cell below we show how 

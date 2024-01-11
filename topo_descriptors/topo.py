@@ -6,7 +6,7 @@ import xarray as xr
 import dask.array as da
 from numba import njit, prange
 from scipy import ndimage, signal
-from multiprocessing import Pool, Value, cpu_count
+from multiprocessing import Pool, cpu_count
 
 import topo_descriptors.helpers as hlp
 from topo_descriptors import CFG
@@ -14,13 +14,13 @@ from topo_descriptors import CFG
 logger = logging.getLogger(__name__)
 
 
-def compute_dem(dem_da, scales, ind_nans=[], crop=None, outdir="."):
+def compute_dem(dem_ds, scales, ind_nans=[], crop=None, outdir="."):
     """Wrapper to 'dem' function to launch computations for all scales and save
     outputs as netCDF files.
 
     Parameters
     ----------
-    dem_da : xarray DataArray representing the DEM and its grid coordinates.
+    dem_ds : xarray Dataset representing the DEM and its grid coordinates.
     scales : scalar or list of scalars
         Scale(s) in meters on which we want to compute the DEM.
         Corresponds to the diameter of the kernel used to compute it.
@@ -31,7 +31,7 @@ def compute_dem(dem_da, scales, ind_nans=[], crop=None, outdir="."):
         the fast Fourier transform method (scipy.signal.convolve).
     crop (optional) : dict
         If specified the outputs are cropped to the given extend. Keys should be
-        the coordinates labels of dem_da and values should be slices of [min,max]
+        the coordinates labels of dem_ds and values should be slices of [min,max]
         extend. Default is None.
     outdir (optional) : string
         The path to the output directory. Save to working directory by default.
@@ -41,22 +41,22 @@ def compute_dem(dem_da, scales, ind_nans=[], crop=None, outdir="."):
     dem
     """
 
-    hlp.check_dem(dem_da)
+    hlp.check_dem(dem_ds)
     logger.info(f"***Starting dem computation for scales {scales} meters***")
     if not hasattr(scales, "__iter__"):
         scales = [scales]
 
-    scales_pxl, res_meters = hlp.scale_to_pixel(scales, dem_da)
+    scales_pxl, res_meters = hlp.scale_to_pixel(scales, dem_ds)
     sigmas = scales_pxl / CFG.scale_std
+    dem_val = hlp.get_da(dem_ds).values
+    units = "m"
 
     for idx, sigma in enumerate(sigmas):
         logger.info(f"Computing scale {scales[idx]} meters")
         name = _dem_name(scales[idx])
-        array = dem(dem=dem_da.values, sigma=sigma)
-
+        array = dem(dem_val, sigma)
         array[ind_nans] = np.nan
-        hlp.to_netcdf(array, dem_da.coords, name, crop, outdir)
-
+        hlp.to_netcdf(array, dem_ds, name, crop, outdir, units)
         del array
 
 
@@ -86,13 +86,13 @@ def _dem_name(scale):
     return f"DEM_{scale}M"
 
 
-def compute_tpi(dem_da, scales, smth_factors=None, ind_nans=[], crop=None, outdir="."):
+def compute_tpi(dem_ds, scales, smth_factors=None, ind_nans=[], crop=None, outdir="."):
     """Wrapper to 'tpi' function to launch computations for all scales and save
     outputs as netCDF files.
 
     Parameters
     ----------
-    dem_da : xarray DataArray representing the DEM and its grid coordinates.
+    dem_ds : xarray Dataset representing the DEM and its grid coordinates.
     scales : scalar or list of scalars
         Scale(s) in meters on which we want to compute the TPI.
         Corresponds to the diameter of the kernel used to compute it.
@@ -108,7 +108,7 @@ def compute_tpi(dem_da, scales, smth_factors=None, ind_nans=[], crop=None, outdi
         the fast Fourier transform method (scipy.signal.convolve).
     crop (optional) : dict
         If specified the outputs are cropped to the given extend. Keys should be
-        the coordinates labels of dem_da and values should be slices of [min,max]
+        the coordinates labels of dem_ds and values should be slices of [min,max]
         extend. Default is None.
     outdir (optional) : string
         The path to the output directory. Save to working directory by default.
@@ -118,15 +118,17 @@ def compute_tpi(dem_da, scales, smth_factors=None, ind_nans=[], crop=None, outdi
     tpi, circular_kernel
     """
 
-    hlp.check_dem(dem_da)
+    hlp.check_dem(dem_ds)
     logger.info(f"***Starting TPI computation for scales {scales} meters***")
     if not hasattr(scales, "__iter__"):
         scales = [scales]
     if not hasattr(smth_factors, "__iter__"):
         smth_factors = [smth_factors] * len(scales)
 
-    scales_pxl, _ = hlp.scale_to_pixel(scales, dem_da)
+    scales_pxl, _ = hlp.scale_to_pixel(scales, dem_ds)
     sigmas = hlp.get_sigmas(smth_factors, scales_pxl)
+    dem_val = hlp.get_da(dem_ds).values
+    units = "m"
 
     for idx, scale_pxl in enumerate(scales_pxl):
         logger.info(
@@ -134,10 +136,9 @@ def compute_tpi(dem_da, scales, smth_factors=None, ind_nans=[], crop=None, outdi
             f" {smth_factors[idx]} ..."
         )
         name = _tpi_name(scales[idx], smth_factors[idx])
-        array = tpi(dem=dem_da.values, size=scale_pxl, sigma=sigmas[idx])
-
+        array = tpi(dem_val, scale_pxl, sigma=sigmas[idx])
         array[ind_nans] = np.nan
-        hlp.to_netcdf(array, dem_da.coords, name, crop, outdir)
+        hlp.to_netcdf(array, dem_ds, name, crop, outdir, units)
         del array
 
 
@@ -213,13 +214,13 @@ def circular_kernel(size):
     return kernel
 
 
-def compute_std(dem_da, scales, smth_factors=None, ind_nans=[], crop=None, outdir="."):
+def compute_std(dem_ds, scales, smth_factors=None, ind_nans=[], crop=None, outdir="."):
     """Wrapper to 'std' function to launch computations for all scales and save
     outputs as netCDF files.
 
     Parameters
     ----------
-    dem_da : xarray DataArray representing the DEM and its grid coordinates.
+    dem_ds : xarray Dataset representing the DEM and its grid coordinates.
     scales : scalar or list of scalars
         Scale(s) in meters on which we want to compute the TPI.
         Corresponds to the diameter of the kernel used to compute it.
@@ -235,7 +236,7 @@ def compute_std(dem_da, scales, smth_factors=None, ind_nans=[], crop=None, outdi
         the fast Fourier transform method (scipy.signal.convolve).
     crop (optional) : dict
         If specified the outputs are cropped to the given extend. Keys should be
-        the coordinates labels of dem_da and values should be slices of [min,max]
+        the coordinates labels of dem_ds and values should be slices of [min,max]
         extend. Default is None.
     outdir (optional) : string
         The path to the output directory. Save to working directory by default.
@@ -245,15 +246,17 @@ def compute_std(dem_da, scales, smth_factors=None, ind_nans=[], crop=None, outdi
     std, circular_kernel
     """
 
-    hlp.check_dem(dem_da)
+    hlp.check_dem(dem_ds)
     logger.info(f"***Starting STD computation for scales {scales} meters***")
     if not hasattr(scales, "__iter__"):
         scales = [scales]
     if not hasattr(smth_factors, "__iter__"):
         smth_factors = [smth_factors] * len(scales)
 
-    scales_pxl, _ = hlp.scale_to_pixel(scales, dem_da)
+    scales_pxl, _ = hlp.scale_to_pixel(scales, dem_ds)
     sigmas = hlp.get_sigmas(smth_factors, scales_pxl)
+    dem_val = hlp.get_da(dem_ds).values
+    units = "m"
 
     for idx, scale_pxl in enumerate(scales_pxl):
         logger.info(
@@ -261,10 +264,9 @@ def compute_std(dem_da, scales, smth_factors=None, ind_nans=[], crop=None, outdi
             f" {smth_factors[idx]} ..."
         )
         name = _std_name(scales[idx], smth_factors[idx])
-        array = std(dem=dem_da.values, size=scale_pxl, sigma=sigmas[idx])
-
+        array = std(dem_val, scale_pxl, sigma=sigmas[idx])
         array[ind_nans] = np.nan
-        hlp.to_netcdf(array, dem_da.coords, name, crop, outdir)
+        hlp.to_netcdf(array, dem_ds, name, crop, outdir, units)
         del array
 
 
@@ -314,7 +316,7 @@ def _std_name(scale, smth_factor):
 
 
 def compute_valley_ridge(
-    dem_da,
+    dem_ds,
     scales,
     mode,
     flat_list=[0, 0.15, 0.3],
@@ -328,7 +330,7 @@ def compute_valley_ridge(
 
     Parameters
     ----------
-    dem_da : xarray DataArray representing the DEM and its grid coordinates.
+    dem_ds : xarray Dataset representing the DEM and its grid coordinates.
     scales : scalar or list of scalars
         Scale(s) in meters over which we want to compute the valley or the ridge
         index. Corresponds to the size of the squared kernel used to compute it.
@@ -350,7 +352,7 @@ def compute_valley_ridge(
         the fast Fourier transform method (scipy.signal.convolve).
     crop (optional) : dict
         If specified the outputs are cropped to the given extend. Keys should be
-        the coordinates labels of dem_da and values should be slices of [min,max]
+        the coordinates labels of dem_ds and values should be slices of [min,max]
         extend. Default is None.
     outdir (optional) : string
         The path to the output directory. Save to working directory by default.
@@ -360,14 +362,14 @@ def compute_valley_ridge(
     valley_ridge, _valley_kernels, _valley_ridge_names
     """
 
-    hlp.check_dem(dem_da)
+    hlp.check_dem(dem_ds)
     logger.info(f"***Starting {mode} index computation for scales {scales} meters***")
     if not hasattr(scales, "__iter__"):
         scales = [scales]
     if not hasattr(smth_factors, "__iter__"):
         smth_factors = [smth_factors] * len(scales)
 
-    scales_pxl, _ = hlp.scale_to_pixel(scales, dem_da)
+    scales_pxl, _ = hlp.scale_to_pixel(scales, dem_ds)
     sigmas = hlp.get_sigmas(smth_factors, scales_pxl)
 
     pool = Pool(processes=min(len(scales_pxl), cpu_count()))
@@ -380,7 +382,7 @@ def compute_valley_ridge(
         pool.apply_async(
             _valley_ridge_wrap,
             args=(
-                dem_da,
+                dem_ds,
                 scale_pxl,
                 mode,
                 flat_list,
@@ -397,15 +399,16 @@ def compute_valley_ridge(
 
 
 def _valley_ridge_wrap(
-    dem_da, size, mode, flat_list, sigma, names, ind_nans, crop, outdir
+    dem_ds, size, mode, flat_list, sigma, names, ind_nans, crop, outdir
 ):
     """Wrapper to valley_ridge and hlp.to_netcdf functions to ease the parallelization
     of the different scales"""
 
-    arrays = valley_ridge(dem_da.values, size, mode, flat_list, sigma)
+    arrays = valley_ridge(hlp.get_da(dem_ds).values, size, mode, flat_list, sigma)
+    units = "1"
     for array, name in zip(arrays, names):
         array[ind_nans] = np.nan
-        hlp.to_netcdf(array, dem_da.coords, name, crop, outdir)
+        hlp.to_netcdf(array, dem_ds, name, crop, outdir, units)
 
 
 @hlp.timer
@@ -461,7 +464,6 @@ def valley_ridge(dem, size, mode, flat_list=[0, 0.15, 0.3], sigma=None):
         kernels = _valley_kernels(size, flat_list)
 
     for angle in angles:  # 0° = E-W valleys, 90° = S-N valleys
-
         kernels_rot = _rotate_kernels(kernels, angle)
         conv = signal.convolve(dem, kernels_rot, mode="same")
         conv = np.max(conv, axis=0)
@@ -554,13 +556,13 @@ def _rotate_kernels(kernel, angle):
     return ma.MaskedArray.filled(kernels_rot, 0).astype(np.float32)
 
 
-def compute_gradient(dem_da, scales, sig_ratios=1, ind_nans=[], crop=None, outdir="."):
+def compute_gradient(dem_ds, scales, sig_ratios=1, ind_nans=[], crop=None, outdir="."):
     """Wrapper to 'gradient' function to launch computations for all scales
     and save outputs as netCDF files.
 
     Parameters
     ----------
-    dem_da : xarray DataArray representing the DEM and its grid coordinates.
+    dem_ds : xarray Dataset representing the DEM and its grid coordinates.
     scales : scalar or list of scalars
         Scale(s) in meters on which we want to compute the the valley or ridge
         index. Corresponds to the size of the squared kernel used to compute it.
@@ -575,7 +577,7 @@ def compute_gradient(dem_da, scales, sig_ratios=1, ind_nans=[], crop=None, outdi
         interpolated prior computations as they propagate in convolutions.
     crop (optional) : dict
         If specified the outputs are cropped to the given extend. Keys should be
-        the coordinates labels of dem_da and values should be slices of [min,max]
+        the coordinates labels of dem_ds and values should be slices of [min,max]
         extend. Default is None.
     outdir (optional) : string
         The path to the output directory. Save to working directory by default.
@@ -585,15 +587,17 @@ def compute_gradient(dem_da, scales, sig_ratios=1, ind_nans=[], crop=None, outdi
     gradient, sobel, _gradient_names
     """
 
-    hlp.check_dem(dem_da)
+    hlp.check_dem(dem_ds)
     logger.info(f"***Starting gradients computation for scales {scales} meters***")
     if not hasattr(scales, "__iter__"):
         scales = [scales]
     if not hasattr(sig_ratios, "__iter__"):
         sig_ratios = [sig_ratios] * len(scales)
 
-    scales_pxl, res_meters = hlp.scale_to_pixel(scales, dem_da)
+    scales_pxl, res_meters = hlp.scale_to_pixel(scales, dem_ds)
     sigmas = scales_pxl / CFG.scale_std
+    dem_val = hlp.get_da(dem_ds).values
+    all_units = ["1", "1", "degree", "degree"]
 
     for idx, sigma in enumerate(sigmas):
         logger.info(
@@ -602,15 +606,15 @@ def compute_gradient(dem_da, scales, sig_ratios=1, ind_nans=[], crop=None, outdi
         )
         names = _gradient_names(scales[idx], sig_ratios[idx])
         arrays = gradient(
-            dem=dem_da.values,
-            sigma=sigma,
-            res_meters=res_meters,
+            dem_val,
+            sigma,
+            res_meters,
             sig_ratio=sig_ratios[idx],
         )
 
-        for array, name in zip(arrays, names):
+        for array, name, units in zip(arrays, names, all_units):
             array[ind_nans] = np.nan
-            hlp.to_netcdf(array, dem_da.coords, name, crop, outdir)
+            hlp.to_netcdf(array, dem_ds, name, crop, outdir, units)
 
         del arrays
 
@@ -657,7 +661,7 @@ def gradient(dem, sigma, res_meters, sig_ratio=1):
 
     _normalize_dxy(dx, dy, res_meters)
 
-    slope = np.sqrt(dx**2, dy**2)
+    slope = np.arctan(np.sqrt(dx**2 + dy**2)) * (180 / np.pi)  # in degrees
     aspect = (
         180 + np.degrees(np.arctan2(dx, dy))
     ) % 360  # north faces = 0°, east faces = 90°
@@ -708,8 +712,7 @@ def sobel(dem):
 
 def _normalize_dxy(dx, dy, res_meters):
     """Normalize directional derivatives, based on (projected) grid resolution.
-    This is useful when the DEM does not come on an equidistant projected grid.
-    Normalization occurs 'in place'.
+    This converts from units of "m / pixel" to "1". Normalization occurs 'in place'.
 
     Parameters
     ----------
@@ -726,18 +729,16 @@ def _normalize_dxy(dx, dy, res_meters):
     topo_helpers.scale_to_pixel
     """
 
-    mean_res = np.mean(np.abs([res_meters["x"].mean(), res_meters["y"].mean()]))
-    x_res = res_meters["x"] / mean_res
-    y_res = res_meters["y"] / mean_res
+    y_res = res_meters["y"]
     if len(y_res.shape) == 1:
         y_res = y_res[:, np.newaxis]
 
-    dx /= x_res
+    dx /= res_meters["x"]
     dy /= y_res
 
 
 def compute_sx(
-    dem_da,
+    dem_ds,
     azimuth,
     radius,
     height=10.0,
@@ -752,7 +753,7 @@ def compute_sx(
 
     Parameters
     ----------
-    dem_da : xarray DataArray representing the DEM and its grid coordinates.
+    dem_ds : xarray Dataset representing the DEM and its grid coordinates.
     azimuth : scalar
         Azimuth angle in degrees for imaginary lines.
     radius : scalar
@@ -769,20 +770,20 @@ def compute_sx(
         reduce the impact of small proximal terrain perturbations.
     crop (optional) : dict
         If specified the outputs are cropped to the given extend. Keys should be
-        the coordinates labels of dem_da and values should be slices of [min,max]
+        the coordinates labels of dem_ds and values should be slices of [min,max]
         extend. Default is None.
 
     See also
     --------
     sx, _sx_distance, _sx_source_idx_delta, _sx_bresenhamlines, _sx_rolling
     """
-    hlp.check_dem(dem_da)
+    hlp.check_dem(dem_ds)
     logger.info(
         f"***Starting Sx computation for azimuth {azimuth} meters and radius {radius}***"
     )
 
     array = sx(
-        dem_da,
+        dem_ds,
         azimuth,
         radius,
         height=height,
@@ -791,14 +792,14 @@ def compute_sx(
         radius_min=radius_min,
     )
 
+    units = "degree"
     name = _sx_name(radius, azimuth)
-    name = str.upper(name)
-    hlp.to_netcdf(array, dem_da.coords, name, crop, outdir)
+    hlp.to_netcdf(array, dem_ds, name, crop, outdir, units)
 
 
 @hlp.timer
 def sx(
-    dem_da,
+    dem_ds,
     azimuth,
     radius,
     height=10.0,
@@ -819,7 +820,7 @@ def sx(
 
     Parameters
     ----------
-    dem_da : xarray DataArray representing the DEM and its grid coordinates.
+    dem_ds : xarray Dataset representing the DEM and its grid coordinates.
     azimuth : scalar
         Azimuth angle in degrees for imaginary lines.
     radius : scalar
@@ -846,8 +847,8 @@ def sx(
     _sx_distance, _sx_source_idx_delta, _sx_bresenhamlines, _sx_rolling
     """
 
-    if not isinstance(dem_da, xr.DataArray):
-        raise TypeError("Argument 'dem_da' must be a xr.DataArray.")
+    if not isinstance(dem_ds, xr.Dataset):
+        raise TypeError("Argument 'dem_ds' must be a xr.Dataset.")
 
     if azimuth_arc == 0:
         azimuth_steps = 1
@@ -858,7 +859,7 @@ def sx(
     )
 
     # grid resolutions
-    _, res_meters = hlp.scale_to_pixel(radius, dem_da)
+    _, res_meters = hlp.scale_to_pixel(radius, dem_ds)
     dx = res_meters["x"].mean()
     dy = res_meters["y"].mean()
 
@@ -877,7 +878,7 @@ def sx(
     lines_indices = _sx_bresenhamlines(source, window_center)
 
     # compute Sx
-    sx = _sx_rolling(dem_da.values, window_distance, lines_indices, height)
+    sx = _sx_rolling(hlp.get_da(dem_ds).values, window_distance, lines_indices, height)
 
     return sx
 
@@ -963,7 +964,6 @@ def _sx_rolling(dem, distance, blines, height):
     sx = np.zeros_like(dem)
     for j in prange(window, ny - window):
         for i in prange(window, nx - window):
-
             j_blines = j + blines_centered[:, 0]
             i_blines = i + blines_centered[:, 1]
             dem_blines = np.array([dem[j, i] for j, i in list(zip(j_blines, i_blines))])
@@ -983,6 +983,3 @@ def _sx_name(radius, azimuth):
 
     add = f"_RADIUS{int(radius)}_AZIMUTH{int(azimuth)}"
     return f"SX{add}"
-
-
-# TODO: Relief
